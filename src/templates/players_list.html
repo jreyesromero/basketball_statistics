@@ -21,7 +21,7 @@
           <thead>
             <tr>
               <th scope="col">ID</th>
-              <th scope="col">Surname</th>
+              <th class="table__col-surname" scope="col">Surname</th>
               <th scope="col">Name</th>
               <th scope="col">Date of birth</th>
               <th scope="col">Address</th>
@@ -31,7 +31,7 @@
             {% for p in players %}
             <tr>
               <td>{{ p.player_id }}</td>
-              <td>{{ p.surname }}</td>
+              <td class="table__col-surname">{{ p.surname }}</td>
               <td>{{ p.name }}</td>
               <td>{{ p.date_of_birth }}</td>
               <td class="table__address">{{ p.address if p.address else "—" }}</td>

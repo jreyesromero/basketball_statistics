@@ -85,6 +85,7 @@ h1 {
 
 .table-scroll {
   overflow-x: auto;
+  margin: 1.25rem 0 1rem;
   border-radius: 12px;
   border: 1px solid #e2e8f0;
   background: #fff;
@@ -99,25 +100,25 @@ h1 {
 
 .table th,
 .table td {
-  padding: 0.75rem 1.5rem;
-  text-align: left;
+  padding: 0.85rem 2.25rem;
+  text-align: right;
   border-bottom: 1px solid #e2e8f0;
   vertical-align: top;
 }
 
-.table th:not(:first-child),
-.table td:not(:first-child) {
-  padding-left: 2.25rem;
-}
-
 .table th:first-child,
 .table td:first-child {
-  padding-left: 1.75rem;
+  padding-inline-start: 2rem;
 }
 
 .table th:last-child,
 .table td:last-child {
-  padding-right: 1.75rem;
+  padding-inline-end: 2rem;
+}
+
+.table th.table__col-surname,
+.table td.table__col-surname {
+  padding-inline-end: calc(2.25rem + 0.5cm);
 }
 
 .table th {
@@ -146,6 +147,7 @@ h1 {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
   color: #64748b;
+  text-align: right;
 }
 
 .empty {
@@ -216,7 +218,7 @@ textarea {
 
 .btn {
   display: inline-block;
-  text-align: center;
+  text-align: right;
   text-decoration: none;
   margin-top: 0.25rem;
   align-self: flex-start;
