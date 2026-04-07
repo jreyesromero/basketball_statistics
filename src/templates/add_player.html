@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Add player — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <h1>Add player</h1>
+
+      {% if success %}
+      <p class="banner banner--ok" role="status">Player saved.</p>
+      {% endif %}
+
+      {% if error %}
+      <p class="banner banner--err" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/players" class="form">
+        <label class="field">
+          <span>Name</span>
+          <input
+            type="text"
+            name="name"
+            autocomplete="given-name"
+            required
+            value="{{ values.get('name', '') }}"
+          />
+        </label>
+
+        <label class="field">
+          <span>Surname</span>
+          <input
+            type="text"
+            name="surname"
+            autocomplete="family-name"
+            required
+            value="{{ values.get('surname', '') }}"
+          />
+        </label>
+
+        <label class="field">
+          <span>Address <span class="hint">(optional)</span></span>
+          <textarea name="address" rows="3">{{ values.get('address', '') }}</textarea>
+        </label>
+
+        <label class="field">
+          <span>Date of birth</span>
+          <input
+            type="date"
+            name="date_of_birth"
+            required
+            value="{{ values.get('date_of_birth', '') }}"
+          />
+        </label>
+
+        <button type="submit" class="btn">Save player</button>
+      </form>
+    </main>
+  </body>
+</html>
