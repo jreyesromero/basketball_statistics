@@ -1,6 +1,4 @@
 from datetime import date, datetime
-from pathlib import Path
-from typing import Any
 
 import sqlite3
 from fastapi import FastAPI, Form, Query, Request
@@ -8,11 +6,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-# Project root (parent of src/) — schema.sql and data/ live here.
-SRC_DIR = Path(__file__).resolve().parent
-ROOT_DIR = SRC_DIR.parent
-DB_PATH = ROOT_DIR / "data" / "basket.sqlite"
-SCHEMA_PATH = ROOT_DIR / "schema.sql"
+from src.api.clubs import router as clubs_api_router
+from src.api.players import router as players_api_router
+from src.db_paths import DB_PATH, SCHEMA_PATH, SRC_DIR
+from src.queries import fetch_clubs, fetch_players
 
 templates = Jinja2Templates(directory=str(SRC_DIR / "templates"))
 
@@ -23,6 +20,8 @@ def _dob_max_input_value() -> str:
 
 app = FastAPI(title="Basketball statistics")
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
+app.include_router(players_api_router, prefix="/api")
+app.include_router(clubs_api_router, prefix="/api")
 
 
 _CLUB_DDL = """
@@ -48,38 +47,6 @@ def ensure_database() -> None:
         with sqlite3.connect(DB_PATH) as conn:
             conn.executescript(sql)
     _ensure_club_table()
-
-
-def fetch_players() -> list[dict[str, Any]]:
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                """
-                SELECT player_id, name, surname, address, date_of_birth
-                FROM player
-                ORDER BY surname COLLATE NOCASE, name COLLATE NOCASE
-                """
-            )
-            return [dict(row) for row in cur.fetchall()]
-    except sqlite3.Error:
-        return []
-
-
-def fetch_clubs() -> list[dict[str, Any]]:
-    try:
-        with sqlite3.connect(DB_PATH) as conn:
-            conn.row_factory = sqlite3.Row
-            cur = conn.execute(
-                """
-                SELECT club_id, name, address, foundation_date
-                FROM club
-                ORDER BY name COLLATE NOCASE
-                """
-            )
-            return [dict(row) for row in cur.fetchall()]
-    except sqlite3.Error:
-        return []
 
 
 @app.on_event("startup")
