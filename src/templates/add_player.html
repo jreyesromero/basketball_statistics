@@ -3,16 +3,13 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Add player — Basket</title>
+    <title>Add a player — Basket</title>
     <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
-    <main class="wrap">
-      <h1>Add player</h1>
-
-      {% if success %}
-      <p class="banner banner--ok" role="status">Player saved.</p>
-      {% endif %}
+    <main class="wrap wrap--narrow">
+      <p class="nav-top"><a href="/">← Home</a></p>
+      <h1>Add a new player</h1>
 
       {% if error %}
       <p class="banner banner--err" role="alert">{{ error }}</p>

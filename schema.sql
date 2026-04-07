@@ -1,6 +1,6 @@
--- SQLite schema for basket (local dev).
+-- SQLite schema for basketball_statistics (local dev).
 -- Create DB: sqlite3 data/basket.sqlite < schema.sql
--- App: from repo root, uvicorn src.main:app --reload
+-- Run app: ./bin/run.sh  (from repo root)
 
 CREATE TABLE IF NOT EXISTS player (
   player_id     INTEGER PRIMARY KEY AUTOINCREMENT,

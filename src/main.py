@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import sqlite3
 from fastapi import FastAPI, Form, Query, Request
@@ -15,7 +16,7 @@ SCHEMA_PATH = ROOT_DIR / "schema.sql"
 
 templates = Jinja2Templates(directory=str(SRC_DIR / "templates"))
 
-app = FastAPI(title="Basket")
+app = FastAPI(title="Basketball statistics")
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
 
 
@@ -27,24 +28,55 @@ def ensure_database() -> None:
             conn.executescript(sql)
 
 
+def fetch_players() -> list[dict[str, Any]]:
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            conn.row_factory = sqlite3.Row
+            cur = conn.execute(
+                """
+                SELECT player_id, name, surname, address, date_of_birth
+                FROM player
+                ORDER BY surname COLLATE NOCASE, name COLLATE NOCASE
+                """
+            )
+            return [dict(row) for row in cur.fetchall()]
+    except sqlite3.Error:
+        return []
+
+
 @app.on_event("startup")
 def _startup() -> None:
     ensure_database()
 
 
 @app.get("/", response_class=HTMLResponse)
-async def add_player_form(
-    request: Request,
-    success: str | None = Query(None),
-    error: str | None = Query(None),
-) -> HTMLResponse:
+async def welcome(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(request, "welcome.html", {})
+
+
+@app.get("/players/new", response_class=HTMLResponse)
+async def add_player_form(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "add_player.html",
         {
-            "success": success == "1",
-            "error": error,
+            "error": None,
             "values": {},
+        },
+    )
+
+
+@app.get("/players", response_class=HTMLResponse)
+async def list_players(
+    request: Request,
+    success: str | None = Query(None),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "players_list.html",
+        {
+            "success": success == "1",
+            "players": fetch_players(),
         },
     )
 
@@ -74,7 +106,6 @@ async def create_player(
             request,
             "add_player.html",
             {
-                "success": False,
                 "error": "Name and surname are required.",
                 "values": values,
             },
@@ -88,7 +119,6 @@ async def create_player(
             request,
             "add_player.html",
             {
-                "success": False,
                 "error": "Date of birth must be a valid date in YYYY-MM-DD format.",
                 "values": values,
             },
@@ -110,11 +140,10 @@ async def create_player(
             request,
             "add_player.html",
             {
-                "success": False,
                 "error": "Could not save to the database. Try again.",
                 "values": values,
             },
             status_code=500,
         )
 
-    return RedirectResponse(url="/?success=1", status_code=303)
+    return RedirectResponse(url="/players?success=1", status_code=303)

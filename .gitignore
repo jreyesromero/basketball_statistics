@@ -1,0 +1,10 @@
+.venv/
+
+# Local SQLite database (create with: sqlite3 data/basket.sqlite < schema.sql)
+data/*.sqlite
+data/*.sqlite-journal
+data/*.sqlite-wal
+data/*.sqlite-shm
+
+.env
+.env.*

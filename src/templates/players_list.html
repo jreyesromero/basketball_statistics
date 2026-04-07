@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>All players — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top"><a href="/">← Home</a></p>
+      <h1>All players</h1>
+
+      {% if success %}
+      <p class="banner banner--ok" role="status">Player saved successfully.</p>
+      {% endif %}
+
+      {% if players %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Surname</th>
+              <th scope="col">Name</th>
+              <th scope="col">Date of birth</th>
+              <th scope="col">Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in players %}
+            <tr>
+              <td>{{ p.player_id }}</td>
+              <td>{{ p.surname }}</td>
+              <td>{{ p.name }}</td>
+              <td>{{ p.date_of_birth }}</td>
+              <td class="table__address">{{ p.address if p.address else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="table-meta">{{ players | length }} player{% if players | length != 1 %}s{% endif %}</p>
+      {% else %}
+      <p class="empty">No players yet. <a href="/players/new">Add a player</a> to get started.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>
