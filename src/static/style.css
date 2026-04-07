@@ -143,6 +143,38 @@ h1 {
   word-break: break-word;
 }
 
+.table--remove .table__check {
+  text-align: center;
+  vertical-align: middle;
+  width: 4.5rem;
+  padding-inline: 0.75rem;
+}
+
+.table--remove .table__check input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  cursor: pointer;
+}
+
+.remove-players__intro {
+  margin: 0 0 1rem;
+  color: #64748b;
+  font-size: 0.95rem;
+  max-width: 40rem;
+}
+
+.remove-players__form {
+  margin: 0;
+}
+
+.remove-players__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin: 1.25rem 0 0;
+}
+
 .table-meta {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;

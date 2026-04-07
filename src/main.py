@@ -66,6 +66,72 @@ async def add_player_form(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/players/remove", response_class=HTMLResponse)
+async def remove_players_form(
+    request: Request,
+    removed: int | None = Query(None, ge=0),
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request,
+        "remove_players.html",
+        {
+            "players": fetch_players(),
+            "error": None,
+            "removed_count": removed,
+        },
+    )
+
+
+@app.post("/players/remove", response_model=None)
+async def remove_players_submit(request: Request) -> RedirectResponse | HTMLResponse:
+    form = await request.form()
+    raw_ids = form.getlist("player_id")
+    ids: list[int] = []
+    for x in raw_ids:
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            continue
+
+    if not ids:
+        return templates.TemplateResponse(
+            request,
+            "remove_players.html",
+            {
+                "players": fetch_players(),
+                "error": "Select at least one player to remove.",
+                "removed_count": None,
+            },
+            status_code=422,
+        )
+
+    try:
+        with sqlite3.connect(DB_PATH) as conn:
+            placeholders = ",".join("?" * len(ids))
+            cur = conn.execute(
+                f"DELETE FROM player WHERE player_id IN ({placeholders})",
+                ids,
+            )
+            conn.commit()
+            deleted = cur.rowcount
+    except sqlite3.Error:
+        return templates.TemplateResponse(
+            request,
+            "remove_players.html",
+            {
+                "players": fetch_players(),
+                "error": "Could not update the database. Try again.",
+                "removed_count": None,
+            },
+            status_code=500,
+        )
+
+    return RedirectResponse(
+        url=f"/players/remove?removed={deleted}",
+        status_code=303,
+    )
+
+
 @app.get("/players", response_class=HTMLResponse)
 async def list_players(
     request: Request,

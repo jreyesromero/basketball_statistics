@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Remove players — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top"><a href="/">← Home</a></p>
+      <h1>Remove players</h1>
+      <p class="remove-players__intro">
+        Tick the players you want to remove, then confirm below. This cannot be undone.
+      </p>
+
+      {% if removed_count is not none and removed_count > 0 %}
+      <p class="banner banner--ok" role="status">
+        Removed {{ removed_count }} player{% if removed_count != 1 %}s{% endif %}.
+      </p>
+      {% endif %}
+
+      {% if error %}
+      <p class="banner banner--err" role="status">{{ error }}</p>
+      {% endif %}
+
+      {% if players %}
+      <form
+        class="remove-players__form"
+        method="post"
+        action="/players/remove"
+        onsubmit="return confirm('Remove the selected players? This cannot be undone.');"
+      >
+        <div class="table-scroll">
+          <table class="table table--remove">
+            <thead>
+              <tr>
+                <th class="table__check" scope="col">Remove</th>
+                <th scope="col">ID</th>
+                <th class="table__col-surname" scope="col">Surname</th>
+                <th scope="col">Name</th>
+                <th scope="col">Date of birth</th>
+                <th scope="col">Address</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in players %}
+              <tr>
+                <td class="table__check">
+                  <input
+                    type="checkbox"
+                    name="player_id"
+                    value="{{ p.player_id }}"
+                    aria-label="Select {{ p.surname }}, {{ p.name }} for removal"
+                  />
+                </td>
+                <td>{{ p.player_id }}</td>
+                <td class="table__col-surname">{{ p.surname }}</td>
+                <td>{{ p.name }}</td>
+                <td>{{ p.date_of_birth }}</td>
+                <td class="table__address">{{ p.address if p.address else "—" }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <p class="remove-players__actions">
+          <button type="submit" class="btn">Remove selected</button>
+          <a href="/players" class="btn btn--secondary">View all players</a>
+        </p>
+      </form>
+      {% else %}
+      <p class="empty">
+        No players to remove. <a href="/players/new">Add a player</a> or
+        <a href="/">return home</a>.
+      </p>
+      {% endif %}
+    </main>
+  </body>
+</html>
