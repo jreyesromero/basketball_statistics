@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +15,11 @@ DB_PATH = ROOT_DIR / "data" / "basket.sqlite"
 SCHEMA_PATH = ROOT_DIR / "schema.sql"
 
 templates = Jinja2Templates(directory=str(SRC_DIR / "templates"))
+
+
+def _dob_max_input_value() -> str:
+    return date.today().isoformat()
+
 
 app = FastAPI(title="Basketball statistics")
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
@@ -62,6 +67,7 @@ async def add_player_form(request: Request) -> HTMLResponse:
         {
             "error": None,
             "values": {},
+            "max_dob": _dob_max_input_value(),
         },
     )
 
@@ -174,12 +180,13 @@ async def create_player(
             {
                 "error": "Name and surname are required.",
                 "values": values,
+                "max_dob": _dob_max_input_value(),
             },
             status_code=422,
         )
 
     try:
-        datetime.strptime(dob_t, "%Y-%m-%d")
+        dob_parsed = datetime.strptime(dob_t, "%Y-%m-%d").date()
     except ValueError:
         return templates.TemplateResponse(
             request,
@@ -187,6 +194,19 @@ async def create_player(
             {
                 "error": "Date of birth must be a valid date in YYYY-MM-DD format.",
                 "values": values,
+                "max_dob": _dob_max_input_value(),
+            },
+            status_code=422,
+        )
+
+    if dob_parsed > date.today():
+        return templates.TemplateResponse(
+            request,
+            "add_player.html",
+            {
+                "error": "Date of birth cannot be in the future.",
+                "values": values,
+                "max_dob": _dob_max_input_value(),
             },
             status_code=422,
         )
@@ -208,6 +228,7 @@ async def create_player(
             {
                 "error": "Could not save to the database. Try again.",
                 "values": values,
+                "max_dob": _dob_max_input_value(),
             },
             status_code=500,
         )
