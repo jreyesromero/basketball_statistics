@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>All clubs — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top"><a href="/clubs/management">← Clubs management</a></p>
+      <h1>All clubs</h1>
+
+      {% if success %}
+      <p class="banner banner--ok" role="status">Club saved successfully.</p>
+      {% endif %}
+
+      {% if clubs %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">ID</th>
+              <th scope="col">Name</th>
+              <th scope="col">Foundation date</th>
+              <th scope="col">Address</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in clubs %}
+            <tr>
+              <td>{{ c.club_id }}</td>
+              <td>{{ c.name }}</td>
+              <td>{{ c.foundation_date }}</td>
+              <td class="table__address">{{ c.address if c.address else "—" }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="table-meta">{{ clubs | length }} club{% if clubs | length != 1 %}s{% endif %}</p>
+      {% else %}
+      <p class="empty">No clubs yet. <a href="/clubs/new">Add a club</a> to get started.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

@@ -13,3 +13,14 @@ CREATE TABLE IF NOT EXISTS player (
 
 CREATE INDEX IF NOT EXISTS idx_player_surname_name
   ON player (surname, name);
+
+CREATE TABLE IF NOT EXISTS club (
+  club_id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  name             TEXT NOT NULL,
+  -- ISO 8601 date (YYYY-MM-DD): foundation / incorporation date.
+  foundation_date  TEXT NOT NULL,
+  address          TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_club_name
+  ON club (name COLLATE NOCASE);

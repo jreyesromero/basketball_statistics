@@ -156,18 +156,18 @@ h1 {
   cursor: pointer;
 }
 
-.remove-players__intro {
+.bulk-remove__intro {
   margin: 0 0 1rem;
   color: #64748b;
   font-size: 0.95rem;
   max-width: 40rem;
 }
 
-.remove-players__form {
+.bulk-remove__form {
   margin: 0;
 }
 
-.remove-players__actions {
+.bulk-remove__actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
