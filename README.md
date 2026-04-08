@@ -10,6 +10,7 @@ A small web application for managing **basketball players** and **clubs** in a l
 - **First administrator:** if the database has **no users**, the app sends you to a **one-time bootstrap** screen to create the first admin account.
 - **Administration:** users with `is_admin` can open **User administration** (`/admin/users`) to create users, toggle active/admin flags, and delete users (with safeguards for the last admin).
 - **JSON API:** `GET /api/players` and `GET /api/clubs` return lists as JSON when valid **HTTP Basic** credentials are supplied (see [Environment variables](#environment-variables)).
+- **Automated tests:** [pytest](https://pytest.org/) suite under `tests/` (password hashing, validation helpers, user repository, and DB queries against a temporary SQLite file).
 
 ## Tech stack
 
@@ -30,9 +31,13 @@ Forms use `python-multipart`. Styling is plain **CSS** under `src/static/`.
 ```
 basketball_statistics/
 ├── bin/run.sh           # Creates venv if needed, installs deps, starts Uvicorn
+├── Jenkinsfile          # Declarative pipeline (CI: venv, dev deps, pytest on `development`)
+├── pytest.ini           # pytest: testpaths, pythonpath for `src` imports
+├── requirements-dev.txt # App deps + pytest (for local runs and Jenkins)
 ├── schema.sql           # Canonical SQL schema (also applied on first DB create)
 ├── data/basket.sqlite   # SQLite file (created at runtime; often gitignored)
 ├── requirements.txt
+├── tests/               # Unit / integration-style tests (pytest)
 └── src/
     ├── main.py          # App factory, HTML routes, DB bootstrap migrations
     ├── db_paths.py      # Paths to DB and schema
@@ -67,6 +72,31 @@ pip install -r requirements.txt
 export BASKET_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
 uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+## Unit tests
+
+Tests live in **`tests/`** and are run with **[pytest](https://pytest.org/)**. They use a temporary SQLite database (via `monkeypatch` on `DB_PATH` in the relevant modules) so your real `data/basket.sqlite` is not touched. `tests/conftest.py` sets a dummy `BASKET_SESSION_SECRET` so imports stay safe.
+
+Install **development** dependencies (includes `requirements.txt` and pytest), then run pytest from the **repository root**:
+
+```bash
+.venv/bin/python -m pip install -r requirements-dev.txt
+.venv/bin/pytest
+```
+
+If you use an activated virtualenv (`source .venv/bin/activate`), you can use `pip install -r requirements-dev.txt` and `pytest` directly. If `pip` is not on your `PATH`, prefer **`python -m pip`** as shown above.
+
+`pytest.ini` sets `testpaths = tests` and `pythonpath = .` so `import src.…` resolves correctly.
+
+## Jenkinsfile (continuous integration)
+
+The repo root **`Jenkinsfile`** defines a **declarative Jenkins pipeline** that:
+
+1. Checks out the repository.
+2. On branches **other than** `development`, skips install and tests (informational message only).
+3. On the **`development`** branch, creates a virtualenv, installs **`requirements-dev.txt`**, sets `BASKET_SESSION_SECRET` for the build, and runs **`pytest -q`**.
+
+Configure your Jenkins job (for example a **Multibranch Pipeline** pointed at this GitHub repository) so builds run on pushes to **`development`**. GitHub **webhooks** require a URL that GitHub can reach; **localhost** Jenkins is not reachable from the internet unless you use **Poll SCM**, a **tunnel** (e.g. ngrok), or Jenkins hosted on a public URL. Adjust the pipeline’s `when { branch 'development' }` blocks if your job does not set `BRANCH_NAME` (some single-branch jobs).
 
 ## Environment variables
 
