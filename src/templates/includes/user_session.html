@@ -1,0 +1,8 @@
+{% if request.state.current_user %}
+<span class="nav-session">
+  <span class="nav-session__email">{{ request.state.current_user.email }}</span>
+  <form method="post" action="/logout" class="nav-session__form">
+    <button type="submit" class="nav-session__btn">Log out</button>
+  </form>
+</span>
+{% endif %}

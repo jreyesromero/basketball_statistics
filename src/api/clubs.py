@@ -2,12 +2,16 @@
 
 import sqlite3
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, ConfigDict
 
+from src.api.auth import require_api_basic
 from src.queries import load_clubs
 
-router = APIRouter(tags=["clubs"])
+router = APIRouter(
+    tags=["clubs"],
+    dependencies=[Depends(require_api_basic)],
+)
 
 
 class ClubJSON(BaseModel):

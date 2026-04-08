@@ -1,15 +1,31 @@
 from datetime import date, datetime
+import os
+import sys
 
 import sqlite3
 from fastapi import FastAPI, Form, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.sessions import SessionMiddleware
 
 from src.api.clubs import router as clubs_api_router
 from src.api.players import router as players_api_router
 from src.db_paths import DB_PATH, SCHEMA_PATH, SRC_DIR
+from src.middleware_auth import RequireLoginMiddleware
+from src.passwords import hash_password, verify_password
 from src.queries import fetch_clubs, fetch_players
+from src.users_repo import fetch_user_by_email, fetch_user_by_id, insert_user
+
+_SESSION_SECRET = os.environ.get("BASKET_SESSION_SECRET", "").strip()
+if len(_SESSION_SECRET) < 32:
+    print(
+        "ERROR: BASKET_SESSION_SECRET must be set to at least 32 characters.\n"
+        "Example: export BASKET_SESSION_SECRET=$(openssl rand -hex 32)\n"
+        "Or run via bin/run.sh, which generates one if unset.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 templates = Jinja2Templates(directory=str(SRC_DIR / "templates"))
 
@@ -18,7 +34,23 @@ def _dob_max_input_value() -> str:
     return date.today().isoformat()
 
 
+def _plausible_email(value: str) -> bool:
+    s = value.strip()
+    if not s or len(s) > 254 or " " in s or s.count("@") != 1:
+        return False
+    local, domain = s.split("@", 1)
+    return bool(local) and bool(domain) and "." in domain
+
+
 app = FastAPI(title="Basketball statistics")
+app.add_middleware(RequireLoginMiddleware)
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=_SESSION_SECRET,
+    max_age=60 * 60 * 24 * 14,
+    same_site="lax",
+    https_only=False,
+)
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
 app.include_router(players_api_router, prefix="/api")
 app.include_router(clubs_api_router, prefix="/api")
@@ -40,6 +72,23 @@ def _ensure_club_table() -> None:
         conn.executescript(_CLUB_DDL)
 
 
+_USERS_DDL = """
+CREATE TABLE IF NOT EXISTS users (
+  user_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash  TEXT NOT NULL,
+  is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE);
+"""
+
+
+def _ensure_users_table() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.executescript(_USERS_DDL)
+
+
 def ensure_database() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not DB_PATH.exists():
@@ -47,11 +96,160 @@ def ensure_database() -> None:
         with sqlite3.connect(DB_PATH) as conn:
             conn.executescript(sql)
     _ensure_club_table()
+    _ensure_users_table()
 
 
 @app.on_event("startup")
 def _startup() -> None:
     ensure_database()
+
+
+@app.get("/login", response_class=HTMLResponse, response_model=None)
+async def login_page(
+    request: Request,
+    registered: str | None = Query(None),
+):
+    uid = request.session.get("user_id")
+    if uid is not None:
+        try:
+            existing = fetch_user_by_id(int(uid))
+        except (TypeError, ValueError):
+            existing = None
+        if existing is not None and existing["is_active"]:
+            return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {
+            "error": None,
+            "values": {},
+            "registered_ok": registered == "1",
+        },
+    )
+
+
+@app.post("/login", response_model=None)
+async def login_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+) -> RedirectResponse | HTMLResponse:
+    email_t = email.strip()
+    values = {"email": email_t}
+    if not _plausible_email(email_t):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Enter a valid email address.",
+                "values": values,
+                "registered_ok": False,
+            },
+            status_code=422,
+        )
+    user = fetch_user_by_email(email_t)
+    if user is None or not verify_password(user["password_hash"], password):
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "Invalid email or password.",
+                "values": values,
+                "registered_ok": False,
+            },
+            status_code=422,
+        )
+    if not user["is_active"]:
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "error": "This account has been disabled.",
+                "values": values,
+                "registered_ok": False,
+            },
+            status_code=403,
+        )
+    request.session["user_id"] = user["user_id"]
+    return RedirectResponse(url="/", status_code=303)
+
+
+@app.get("/register", response_class=HTMLResponse, response_model=None)
+async def register_page(request: Request):
+    uid = request.session.get("user_id")
+    if uid is not None:
+        try:
+            existing = fetch_user_by_id(int(uid))
+        except (TypeError, ValueError):
+            existing = None
+        if existing is not None and existing["is_active"]:
+            return RedirectResponse(url="/", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "register.html",
+        {"error": None, "values": {}},
+    )
+
+
+@app.post("/register", response_model=None)
+async def register_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+) -> RedirectResponse | HTMLResponse:
+    email_t = email.strip()
+    values = {"email": email_t}
+    if not _plausible_email(email_t):
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "Enter a valid email address.", "values": values},
+            status_code=422,
+        )
+    if len(password) < 8:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "Password must be at least 8 characters.", "values": values},
+            status_code=422,
+        )
+    if password != password_confirm:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {"error": "Passwords do not match.", "values": values},
+            status_code=422,
+        )
+    try:
+        insert_user(email_t, hash_password(password), is_active=True)
+    except sqlite3.IntegrityError:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {
+                "error": "An account with this email already exists.",
+                "values": values,
+            },
+            status_code=422,
+        )
+    except sqlite3.Error:
+        return templates.TemplateResponse(
+            request,
+            "register.html",
+            {
+                "error": "Could not create the account. Try again.",
+                "values": values,
+            },
+            status_code=500,
+        )
+    return RedirectResponse(url="/login?registered=1", status_code=303)
+
+
+@app.post("/logout", response_model=None)
+async def logout(request: Request) -> RedirectResponse:
+    request.session.clear()
+    return RedirectResponse(url="/login", status_code=303)
 
 
 @app.get("/", response_class=HTMLResponse)

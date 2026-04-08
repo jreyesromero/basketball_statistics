@@ -8,7 +8,10 @@
   </head>
   <body>
     <main class="wrap wrap--narrow">
-      <p class="nav-top"><a href="/players/management">← Players management</a></p>
+      <p class="nav-top">
+        <a href="/players/management">← Players management</a>
+        {% include "includes/user_session.html" %}
+      </p>
       <h1>Add a new player</h1>
 
       {% if error %}

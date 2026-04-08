@@ -24,3 +24,13 @@ CREATE TABLE IF NOT EXISTS club (
 
 CREATE INDEX IF NOT EXISTS idx_club_name
   ON club (name COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS users (
+  user_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+  email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  password_hash  TEXT NOT NULL,
+  is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  created_at     TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE);

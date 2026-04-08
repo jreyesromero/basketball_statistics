@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Register — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap wrap--narrow">
+      <h1>Create an account</h1>
+
+      {% if error %}
+      <p class="banner banner--err" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/register" class="form">
+        <label class="field">
+          <span>Email</span>
+          <input
+            type="email"
+            name="email"
+            autocomplete="email"
+            required
+            value="{{ values.get('email', '') }}"
+          />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            aria-describedby="pw-hint"
+          />
+          <span id="pw-hint" class="hint">At least 8 characters.</span>
+        </label>
+
+        <label class="field">
+          <span>Confirm password</span>
+          <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
+        </label>
+
+        <button type="submit" class="btn">Register</button>
+      </form>
+
+      <p class="auth-switch">
+        Already registered?
+        <a href="/login">Sign in</a>
+      </p>
+    </main>
+  </body>
+</html>

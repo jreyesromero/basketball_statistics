@@ -28,6 +28,11 @@ body {
 }
 
 .nav-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
   margin: 0 0 1rem;
   font-size: 0.9rem;
 }
@@ -39,6 +44,61 @@ body {
 }
 
 .nav-top a:hover {
+  text-decoration: underline;
+}
+
+.nav-top--welcome {
+  justify-content: flex-end;
+}
+
+.nav-session {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-size: 0.85rem;
+  color: #64748b;
+}
+
+.nav-session__email {
+  max-width: 14rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nav-session__form {
+  display: inline;
+  margin: 0;
+}
+
+.nav-session__btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #2563eb;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.nav-session__btn:hover {
+  text-decoration: underline;
+}
+
+.auth-switch {
+  margin: 1.25rem 0 0;
+  font-size: 0.95rem;
+  color: #64748b;
+}
+
+.auth-switch a {
+  color: #2563eb;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
   text-decoration: underline;
 }
 

@@ -8,7 +8,10 @@
   </head>
   <body>
     <main class="wrap wrap--welcome">
-      <p class="nav-top"><a href="/">← Home</a></p>
+      <p class="nav-top">
+        <a href="/">← Home</a>
+        {% include "includes/user_session.html" %}
+      </p>
       <h1 class="welcome__title">Clubs management</h1>
       <p class="welcome__lead">Add, browse, or remove clubs.</p>
       <nav class="welcome__actions" aria-label="Club actions">
