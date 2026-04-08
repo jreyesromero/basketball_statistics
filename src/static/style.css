@@ -102,6 +102,44 @@ body {
   text-decoration: underline;
 }
 
+.bootstrap__lead {
+  margin: 0 0 1.25rem;
+  color: #64748b;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.admin-toolbar {
+  margin: 0 0 1rem;
+}
+
+.admin-inline-form {
+  display: inline;
+  margin: 0 0.35rem 0.35rem 0;
+}
+
+.table__admin-actions {
+  white-space: normal;
+  vertical-align: top;
+}
+
+.table--admin-users .btn--small {
+  font-size: 0.8rem;
+  padding: 0.4rem 0.65rem;
+}
+
+.field--checkbox {
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+
+.field--checkbox input {
+  margin-top: 0.2rem;
+  width: auto;
+}
+
 .welcome__title {
   font-size: 1.65rem;
   font-weight: 700;

@@ -18,6 +18,9 @@
       <nav class="welcome__actions" aria-label="Main options">
         <a href="/players/management" class="btn btn--block">Players management</a>
         <a href="/clubs/management" class="btn btn--secondary btn--block">Clubs management</a>
+        {% if request.state.current_user and request.state.current_user.is_admin %}
+        <a href="/admin/users" class="btn btn--secondary btn--block">User administration</a>
+        {% endif %}
       </nav>
     </main>
   </body>

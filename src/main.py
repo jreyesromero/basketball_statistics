@@ -15,7 +15,13 @@ from src.db_paths import DB_PATH, SCHEMA_PATH, SRC_DIR
 from src.middleware_auth import RequireLoginMiddleware
 from src.passwords import hash_password, verify_password
 from src.queries import fetch_clubs, fetch_players
-from src.users_repo import fetch_user_by_email, fetch_user_by_id, insert_user
+from src.admin_routes import router as admin_router
+from src.users_repo import (
+    count_users,
+    fetch_user_by_email,
+    fetch_user_by_id,
+    insert_user,
+)
 
 _SESSION_SECRET = os.environ.get("BASKET_SESSION_SECRET", "").strip()
 if len(_SESSION_SECRET) < 32:
@@ -54,6 +60,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
 app.include_router(players_api_router, prefix="/api")
 app.include_router(clubs_api_router, prefix="/api")
+app.include_router(admin_router)
 
 
 _CLUB_DDL = """
@@ -78,6 +85,7 @@ CREATE TABLE IF NOT EXISTS users (
   email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash  TEXT NOT NULL,
   is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  is_admin       INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE);
@@ -89,6 +97,17 @@ def _ensure_users_table() -> None:
         conn.executescript(_USERS_DDL)
 
 
+def _migrate_users_add_is_admin() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        cur = conn.execute("PRAGMA table_info(users)")
+        cols = {row[1] for row in cur.fetchall()}
+        if cols and "is_admin" not in cols:
+            conn.execute(
+                "ALTER TABLE users ADD COLUMN is_admin INTEGER NOT NULL DEFAULT 0"
+            )
+            conn.commit()
+
+
 def ensure_database() -> None:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     if not DB_PATH.exists():
@@ -97,6 +116,7 @@ def ensure_database() -> None:
             conn.executescript(sql)
     _ensure_club_table()
     _ensure_users_table()
+    _migrate_users_add_is_admin()
 
 
 @app.on_event("startup")
@@ -104,11 +124,81 @@ def _startup() -> None:
     ensure_database()
 
 
+@app.get("/bootstrap", response_class=HTMLResponse, response_model=None)
+async def bootstrap_page(request: Request):
+    if count_users() > 0:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse(
+        request,
+        "bootstrap.html",
+        {"error": None, "values": {}},
+    )
+
+
+@app.post("/bootstrap", response_model=None)
+async def bootstrap_submit(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    password_confirm: str = Form(...),
+) -> RedirectResponse | HTMLResponse:
+    if count_users() > 0:
+        return RedirectResponse(url="/login", status_code=303)
+    email_t = email.strip()
+    values = {"email": email_t}
+    if not _plausible_email(email_t):
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": "Enter a valid email address.", "values": values},
+            status_code=422,
+        )
+    if len(password) < 8:
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": "Password must be at least 8 characters.", "values": values},
+            status_code=422,
+        )
+    if password != password_confirm:
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": "Passwords do not match.", "values": values},
+            status_code=422,
+        )
+    try:
+        insert_user(
+            email_t,
+            hash_password(password),
+            is_active=True,
+            is_admin=True,
+        )
+    except sqlite3.IntegrityError:
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": "Could not create the administrator account.", "values": values},
+            status_code=422,
+        )
+    except sqlite3.Error:
+        return templates.TemplateResponse(
+            request,
+            "bootstrap.html",
+            {"error": "Could not save to the database. Try again.", "values": values},
+            status_code=500,
+        )
+    return RedirectResponse(url="/login?bootstrapped=1", status_code=303)
+
+
 @app.get("/login", response_class=HTMLResponse, response_model=None)
 async def login_page(
     request: Request,
     registered: str | None = Query(None),
+    bootstrapped: str | None = Query(None),
 ):
+    if count_users() == 0:
+        return RedirectResponse(url="/bootstrap", status_code=303)
     uid = request.session.get("user_id")
     if uid is not None:
         try:
@@ -124,6 +214,7 @@ async def login_page(
             "error": None,
             "values": {},
             "registered_ok": registered == "1",
+            "bootstrapped_ok": bootstrapped == "1",
         },
     )
 
@@ -144,6 +235,7 @@ async def login_submit(
                 "error": "Enter a valid email address.",
                 "values": values,
                 "registered_ok": False,
+                "bootstrapped_ok": False,
             },
             status_code=422,
         )
@@ -156,6 +248,7 @@ async def login_submit(
                 "error": "Invalid email or password.",
                 "values": values,
                 "registered_ok": False,
+                "bootstrapped_ok": False,
             },
             status_code=422,
         )
@@ -167,6 +260,7 @@ async def login_submit(
                 "error": "This account has been disabled.",
                 "values": values,
                 "registered_ok": False,
+                "bootstrapped_ok": False,
             },
             status_code=403,
         )
@@ -176,6 +270,8 @@ async def login_submit(
 
 @app.get("/register", response_class=HTMLResponse, response_model=None)
 async def register_page(request: Request):
+    if count_users() == 0:
+        return RedirectResponse(url="/bootstrap", status_code=303)
     uid = request.session.get("user_id")
     if uid is not None:
         try:
@@ -198,6 +294,8 @@ async def register_submit(
     password: str = Form(...),
     password_confirm: str = Form(...),
 ) -> RedirectResponse | HTMLResponse:
+    if count_users() == 0:
+        return RedirectResponse(url="/bootstrap", status_code=303)
     email_t = email.strip()
     values = {"email": email_t}
     if not _plausible_email(email_t):
@@ -222,7 +320,12 @@ async def register_submit(
             status_code=422,
         )
     try:
-        insert_user(email_t, hash_password(password), is_active=True)
+        insert_user(
+            email_t,
+            hash_password(password),
+            is_active=True,
+            is_admin=False,
+        )
     except sqlite3.IntegrityError:
         return templates.TemplateResponse(
             request,

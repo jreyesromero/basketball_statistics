@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
   email          TEXT NOT NULL UNIQUE COLLATE NOCASE,
   password_hash  TEXT NOT NULL,
   is_active      INTEGER NOT NULL DEFAULT 1 CHECK (is_active IN (0, 1)),
+  is_admin       INTEGER NOT NULL DEFAULT 0 CHECK (is_admin IN (0, 1)),
   created_at     TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

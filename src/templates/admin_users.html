@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Users — Admin</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top">
+        <a href="/">← Home</a>
+        {% include "includes/user_session.html" %}
+      </p>
+      <h1>User administration</h1>
+
+      {% if flash_msg == "created" %}
+      <p class="banner banner--ok" role="status">User created.</p>
+      {% elif flash_msg == "updated" %}
+      <p class="banner banner--ok" role="status">User updated.</p>
+      {% elif flash_msg == "deleted" %}
+      <p class="banner banner--ok" role="status">User removed.</p>
+      {% endif %}
+
+      {% if flash_err == "user_not_found" %}
+      <p class="banner banner--err" role="alert">User not found.</p>
+      {% elif flash_err == "cannot_deactivate_last_admin" %}
+      <p class="banner banner--err" role="alert">You cannot deactivate the only active administrator.</p>
+      {% elif flash_err == "cannot_demote_last_admin" %}
+      <p class="banner banner--err" role="alert">You cannot remove admin from the only administrator.</p>
+      {% elif flash_err == "cannot_delete_self" %}
+      <p class="banner banner--err" role="alert">You cannot delete your own account here.</p>
+      {% elif flash_err == "cannot_delete_last_admin" %}
+      <p class="banner banner--err" role="alert">You cannot delete the only administrator.</p>
+      {% elif flash_err == "db_error" %}
+      <p class="banner banner--err" role="alert">Database error. Try again.</p>
+      {% endif %}
+
+      <p class="admin-toolbar">
+        <a href="/admin/users/new" class="btn">Add user</a>
+      </p>
+
+      {% if users %}
+      <div class="table-scroll">
+        <table class="table table--admin-users">
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Active</th>
+              <th scope="col">Admin</th>
+              <th scope="col">Created</th>
+              <th scope="col">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td>
+                {{ u.email }}
+                {% if u.user_id == current_user_id %}<span class="hint">(you)</span>{% endif %}
+              </td>
+              <td>{% if u.is_active %}Yes{% else %}No{% endif %}</td>
+              <td>{% if u.is_admin %}Yes{% else %}No{% endif %}</td>
+              <td>{{ u.created_at }}</td>
+              <td class="table__admin-actions">
+                <form method="post" action="/admin/users/{{ u.user_id }}/set-active" class="admin-inline-form">
+                  <input type="hidden" name="active" value="{{ 0 if u.is_active else 1 }}" />
+                  <button type="submit" class="btn btn--small btn--secondary" {% if u.is_admin and u.is_active and sole_active_admin_id == u.user_id %}disabled title="Cannot deactivate the only active admin"{% endif %}>
+                    {% if u.is_active %}Deactivate{% else %}Activate{% endif %}
+                  </button>
+                </form>
+                <form method="post" action="/admin/users/{{ u.user_id }}/set-admin" class="admin-inline-form">
+                  <input type="hidden" name="admin" value="{{ 0 if u.is_admin else 1 }}" />
+                  <button type="submit" class="btn btn--small btn--secondary" {% if u.is_admin and sole_active_admin_id == u.user_id %}disabled title="Cannot demote the only admin"{% endif %}>
+                    {% if u.is_admin %}Remove admin{% else %}Make admin{% endif %}
+                  </button>
+                </form>
+                <form
+                  method="post"
+                  action="/admin/users/{{ u.user_id }}/delete"
+                  class="admin-inline-form"
+                  onsubmit="return confirm('Delete this user permanently?');"
+                >
+                  <button
+                    type="submit"
+                    class="btn btn--small btn--secondary"
+                    {% if u.user_id == current_user_id %}disabled title="Cannot delete yourself"{% endif %}
+                    {% if u.is_admin and sole_active_admin_id == u.user_id %}disabled title="Cannot delete the only admin"{% endif %}
+                  >
+                    Delete
+                  </button>
+                </form>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No users.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

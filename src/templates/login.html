@@ -14,6 +14,10 @@
       <p class="banner banner--ok" role="status">Account created. You can sign in now.</p>
       {% endif %}
 
+      {% if bootstrapped_ok %}
+      <p class="banner banner--ok" role="status">Administrator account created. Sign in below.</p>
+      {% endif %}
+
       {% if error %}
       <p class="banner banner--err" role="alert">{{ error }}</p>
       {% endif %}

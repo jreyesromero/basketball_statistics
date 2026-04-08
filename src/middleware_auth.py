@@ -15,7 +15,7 @@ def _is_public_browser_path(path: str) -> bool:
     if path in ("/docs", "/openapi.json", "/redoc", "/favicon.ico"):
         return True
     p = path.rstrip("/") or "/"
-    if p in ("/login", "/register"):
+    if p in ("/login", "/register", "/bootstrap"):
         return True
     return False
 
@@ -44,5 +44,8 @@ class RequireLoginMiddleware(BaseHTTPMiddleware):
         request.state.current_user = {
             "user_id": user["user_id"],
             "email": user["email"],
+            "is_admin": user["is_admin"],
         }
+        if path.startswith("/admin") and not user["is_admin"]:
+            return RedirectResponse(url="/", status_code=303)
         return await call_next(request)

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Create administrator — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap wrap--narrow">
+      <h1>Create the first administrator</h1>
+      <p class="bootstrap__lead">
+        No users exist yet. Create the initial admin account. After this, use <strong>Sign in</strong> to access the app.
+        Self-registration will remain available for non-admin users only.
+      </p>
+
+      {% if error %}
+      <p class="banner banner--err" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <form method="post" action="/bootstrap" class="form">
+        <label class="field">
+          <span>Admin email</span>
+          <input
+            type="email"
+            name="email"
+            autocomplete="email"
+            required
+            value="{{ values.get('email', '') }}"
+          />
+        </label>
+
+        <label class="field">
+          <span>Password</span>
+          <input
+            type="password"
+            name="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            aria-describedby="bootstrap-pw-hint"
+          />
+          <span id="bootstrap-pw-hint" class="hint">At least 8 characters.</span>
+        </label>
+
+        <label class="field">
+          <span>Confirm password</span>
+          <input type="password" name="password_confirm" autocomplete="new-password" required minlength="8" />
+        </label>
+
+        <button type="submit" class="btn">Create administrator</button>
+      </form>
+    </main>
+  </body>
+</html>
