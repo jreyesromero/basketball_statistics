@@ -15,7 +15,13 @@ def _is_public_browser_path(path: str) -> bool:
     if path in ("/docs", "/openapi.json", "/redoc", "/favicon.ico"):
         return True
     p = path.rstrip("/") or "/"
-    if p in ("/login", "/register", "/bootstrap"):
+    if p in (
+        "/login",
+        "/register",
+        "/bootstrap",
+        "/forgot-password",
+        "/reset-password",
+    ):
         return True
     return False
 

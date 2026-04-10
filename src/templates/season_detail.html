@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Season {{ season.start_year }}–{{ season.end_year }} — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top">
+        <a href="/seasons">← Seasons</a>
+        {% include "includes/user_session.html" %}
+      </p>
+      <h1>Season {{ season.start_year }}–{{ season.end_year }}</h1>
+
+      {% if error %}
+      <p class="banner banner--err" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <p class="admin-toolbar">
+        <a href="/seasons/{{ season.season_id }}/enroll" class="btn">Enroll player</a>
+      </p>
+
+      {% if enrollments %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th class="table__col-surname" scope="col">Surname</th>
+              <th scope="col">Name</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in enrollments %}
+            <tr>
+              <td class="table__col-surname">{{ e.surname }}</td>
+              <td>{{ e.name }}</td>
+              <td><a href="/player-season/{{ e.player_season_id }}">Roster &amp; stints</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="table-meta">{{ enrollments | length }} enrollment{% if enrollments | length != 1 %}s{% endif %}</p>
+      {% else %}
+      <p class="empty">No players enrolled. <a href="/seasons/{{ season.season_id }}/enroll">Enroll a player</a>.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

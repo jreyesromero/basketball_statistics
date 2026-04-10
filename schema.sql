@@ -35,3 +35,55 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_email ON users (email COLLATE NOCASE);
+
+CREATE TABLE IF NOT EXISTS password_reset (
+  reset_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id     INTEGER NOT NULL REFERENCES users (user_id),
+  token_hash  TEXT NOT NULL UNIQUE,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_password_reset_user ON password_reset (user_id);
+
+CREATE TABLE IF NOT EXISTS season (
+  season_id   INTEGER PRIMARY KEY AUTOINCREMENT,
+  start_year  TEXT NOT NULL,
+  end_year    TEXT NOT NULL,
+  UNIQUE (start_year, end_year)
+);
+
+CREATE TABLE IF NOT EXISTS player_season (
+  player_season_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_id         INTEGER NOT NULL REFERENCES player (player_id),
+  season_id         INTEGER NOT NULL REFERENCES season (season_id),
+  UNIQUE (player_id, season_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_player_season_season ON player_season (season_id);
+CREATE INDEX IF NOT EXISTS idx_player_season_player ON player_season (player_id);
+
+CREATE TABLE IF NOT EXISTS roster_stint (
+  roster_stint_id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  player_season_id   INTEGER NOT NULL REFERENCES player_season (player_season_id),
+  club_id            INTEGER NOT NULL REFERENCES club (club_id),
+  start_date         TEXT NOT NULL,
+  end_date           TEXT,
+  enabled            INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  jersey_number      TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_roster_stint_player_season ON roster_stint (player_season_id);
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  audit_id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_type          TEXT NOT NULL,
+  entity_id            INTEGER NOT NULL,
+  action               TEXT NOT NULL,
+  changed_at           TEXT NOT NULL DEFAULT (datetime('now')),
+  changed_by_user_id   INTEGER REFERENCES users (user_id),
+  details              TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_audit_log_changed_at ON audit_log (changed_at);

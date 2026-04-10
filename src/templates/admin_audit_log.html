@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Audit log — Admin</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top">
+        <a href="/admin/users">← User administration</a>
+        {% include "includes/user_session.html" %}
+      </p>
+      <h1>Audit log</h1>
+      <p class="hint">Most recent 200 entries.</p>
+
+      {% if entries %}
+      <div class="table-scroll">
+        <table class="table table--audit">
+          <thead>
+            <tr>
+              <th scope="col">When</th>
+              <th scope="col">Entity</th>
+              <th scope="col">Action</th>
+              <th scope="col">By</th>
+              <th scope="col">Details</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in entries %}
+            <tr>
+              <td>{{ e.changed_at }}</td>
+              <td>{{ e.entity_type }} #{{ e.entity_id }}</td>
+              <td>{{ e.action }}</td>
+              <td>{% if e.changed_by_email %}{{ e.changed_by_email }}{% else %}—{% endif %}</td>
+              <td class="table__audit-details">
+                {% if e.details_parsed is defined and e.details_parsed is not none %}
+                <pre class="audit-json">{{ e.details_parsed | tojson(indent=2) }}</pre>
+                {% else %}
+                <code class="audit-raw">{{ e.details }}</code>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No audit entries yet.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

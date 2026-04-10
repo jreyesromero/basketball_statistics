@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Seasons — Basket</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <p class="nav-top">
+        <a href="/">← Home</a>
+        {% include "includes/user_session.html" %}
+      </p>
+      <h1>Seasons</h1>
+      <p class="admin-toolbar">
+        <a href="/seasons/new" class="btn">New season</a>
+      </p>
+
+      {% if seasons %}
+      <div class="table-scroll">
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">Season</th>
+              <th scope="col">Enrollments</th>
+              <th scope="col"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in seasons %}
+            <tr>
+              <td>{{ s.start_year }}–{{ s.end_year }}</td>
+              <td>{{ s.enrollment_count }}</td>
+              <td><a href="/seasons/{{ s.season_id }}">Open</a></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="empty">No seasons yet. <a href="/seasons/new">Create a season</a>.</p>
+      {% endif %}
+    </main>
+  </body>
+</html>

@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 
 from src.db_paths import SRC_DIR
 from src.passwords import hash_password
+from src import roster_repo
 from src.users_repo import (
     count_active_admins,
     delete_user,
@@ -193,3 +194,13 @@ async def admin_delete_user(
     except sqlite3.Error:
         return _redirect_users(err="db_error")
     return _redirect_users(msg="deleted")
+
+
+@router.get("/audit-log", response_class=HTMLResponse, response_model=None)
+async def admin_audit_log(request: Request):
+    entries = roster_repo.list_audit_log(limit=200)
+    return templates.TemplateResponse(
+        request,
+        "admin_audit_log.html",
+        {"entries": entries},
+    )

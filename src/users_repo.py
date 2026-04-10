@@ -146,3 +146,12 @@ def delete_user(user_id: int) -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("DELETE FROM users WHERE user_id = ?", (user_id,))
         conn.commit()
+
+
+def update_password_hash(user_id: int, password_hash: str) -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute(
+            "UPDATE users SET password_hash = ? WHERE user_id = ?",
+            (password_hash, user_id),
+        )
+        conn.commit()
