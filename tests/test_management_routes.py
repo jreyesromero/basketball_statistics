@@ -157,3 +157,97 @@ def test_create_season_duplicate_returns_422(client):
     r2 = c.post("/seasons/new", data={"start_year": "2030", "end_year": "2031"})
     assert r2.status_code == 422
     assert "already exists" in r2.text
+
+
+def test_clubs_list_shows_season_roster_dropdown_after_team_added(client):
+    """Clubs table gets season roster <select> linking to /season-team/{id}."""
+    c, _db_path = client
+    _bootstrap_and_login(c, "admin@example.com", "adminpass1")
+
+    c.post(
+        "/clubs",
+        data={
+            "name": "Roster City BC",
+            "address": "",
+            "foundation_date": "2000-01-01",
+        },
+        follow_redirects=False,
+    )
+    r_season = c.post(
+        "/seasons/new",
+        data={"start_year": "2025", "end_year": "2026"},
+        follow_redirects=False,
+    )
+    assert r_season.status_code == 303
+    m = re.search(r"/seasons/(\d+)$", r_season.headers.get("location", ""))
+    assert m
+    season_id = int(m.group(1))
+
+    r_add = c.post(
+        f"/seasons/{season_id}/add-team",
+        data={"club_id": "1"},
+        follow_redirects=False,
+    )
+    assert r_add.status_code == 303
+
+    listing = c.get("/clubs")
+    assert listing.status_code == 200
+    assert "club-roster-season-select" in listing.text
+    assert "Roster City BC" in listing.text
+    assert "2025" in listing.text and "2026" in listing.text
+    assert re.search(r'/season-team/\d+', listing.text)
+
+
+def test_season_team_detail_page(client):
+    c, db_path = client
+    _bootstrap_and_login(c, "admin@example.com", "adminpass1")
+
+    c.post(
+        "/clubs",
+        data={
+            "name": "Detail Club",
+            "address": "",
+            "foundation_date": "1999-05-05",
+        },
+        follow_redirects=False,
+    )
+    r_season = c.post(
+        "/seasons/new",
+        data={"start_year": "2024", "end_year": "2025"},
+        follow_redirects=False,
+    )
+    season_id = int(re.search(r"/seasons/(\d+)$", r_season.headers["location"]).group(1))
+    c.post(
+        f"/seasons/{season_id}/add-team",
+        data={"club_id": "1"},
+        follow_redirects=False,
+    )
+    with sqlite3.connect(db_path) as conn:
+        st_id = conn.execute(
+            "SELECT season_team_id FROM season_team WHERE club_id = 1"
+        ).fetchone()[0]
+
+    page = c.get(f"/season-team/{st_id}")
+    assert page.status_code == 200
+    assert "Detail Club" in page.text
+    assert "2024" in page.text and "2025" in page.text
+    assert "Add player" in page.text
+
+
+def test_team_management_legacy_url_redirects_to_season(client):
+    c, _db_path = client
+    _bootstrap_and_login(c, "admin@example.com", "adminpass1")
+
+    r_season = c.post(
+        "/seasons/new",
+        data={"start_year": "2099", "end_year": "2100"},
+        follow_redirects=False,
+    )
+    season_id = int(re.search(r"/seasons/(\d+)$", r_season.headers["location"]).group(1))
+
+    r = c.get(
+        f"/seasons/{season_id}/team-management",
+        follow_redirects=False,
+    )
+    assert r.status_code == 303
+    assert r.headers.get("location", "").endswith(f"/seasons/{season_id}")

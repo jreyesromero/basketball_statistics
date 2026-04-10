@@ -89,3 +89,35 @@ def test_delete_season_team_removes_assignments(roster_db):
             (sid,),
         ).fetchone()[0]
     assert n == 0
+
+
+def test_list_season_teams_for_club_empty_when_not_in_season(roster_db):
+    from src import roster_repo
+
+    assert roster_repo.list_season_teams_for_club(1) == []
+
+
+def test_list_season_teams_for_club_multiple_seasons_newest_first(roster_db):
+    from src import roster_repo
+
+    s_old = roster_repo.insert_season("2020", "2021", user_id=1)
+    s_new = roster_repo.insert_season("2024", "2025", user_id=1)
+    st_old = roster_repo.insert_season_team(s_old, 1, user_id=1)
+    st_new = roster_repo.insert_season_team(s_new, 1, user_id=1)
+
+    rows = roster_repo.list_season_teams_for_club(1)
+    assert len(rows) == 2
+    assert rows[0]["season_team_id"] == st_new
+    assert rows[0]["start_year"] == "2024"
+    assert rows[1]["season_team_id"] == st_old
+    assert rows[1]["start_year"] == "2020"
+
+
+def test_fetch_season_team_id_for_team_player_row(roster_db):
+    from src import roster_repo
+
+    sid = roster_repo.insert_season("2024", "2025", user_id=1)
+    st_id = roster_repo.insert_season_team(sid, 1, user_id=1)
+    stp_id = roster_repo.insert_team_player(st_id, 1, None, user_id=1)
+    assert roster_repo.fetch_season_team_id_for_team_player_row(stp_id) == st_id
+    assert roster_repo.fetch_season_team_id_for_team_player_row(99999) is None
