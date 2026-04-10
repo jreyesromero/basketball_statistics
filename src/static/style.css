@@ -27,6 +27,10 @@ body {
   max-width: 36rem;
 }
 
+.wrap--wide {
+  max-width: 72rem;
+}
+
 .nav-top {
   display: flex;
   flex-wrap: wrap;
@@ -459,4 +463,67 @@ textarea {
 .audit-raw {
   font-size: 0.8rem;
   word-break: break-word;
+}
+
+.team-roster-section {
+  margin-bottom: 2rem;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.team-roster-section:last-of-type {
+  border-bottom: none;
+}
+
+.form--inline-assign {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin-top: 1rem;
+  max-width: none;
+}
+
+.field--inline-assign {
+  margin: 0;
+  min-width: 12rem;
+}
+
+.field--inline-assign__label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.season-team-picker {
+  max-width: 28rem;
+  margin-bottom: 1rem;
+}
+
+.season-team-jump-select {
+  width: 100%;
+  max-width: 28rem;
+  margin-top: 0.35rem;
+  padding: 0.5rem 0.65rem;
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+}
+
+.table__club-roster {
+  min-width: 11rem;
+  vertical-align: middle;
+}
+
+.club-roster-season-select {
+  width: 100%;
+  max-width: 14rem;
+  padding: 0.4rem 0.5rem;
+  font: inherit;
+  font-size: 0.9rem;
+  border-radius: 8px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
 }

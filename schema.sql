@@ -54,27 +54,27 @@ CREATE TABLE IF NOT EXISTS season (
   UNIQUE (start_year, end_year)
 );
 
-CREATE TABLE IF NOT EXISTS player_season (
-  player_season_id  INTEGER PRIMARY KEY AUTOINCREMENT,
-  player_id         INTEGER NOT NULL REFERENCES player (player_id),
-  season_id         INTEGER NOT NULL REFERENCES season (season_id),
+CREATE TABLE IF NOT EXISTS season_team (
+  season_team_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  season_id       INTEGER NOT NULL REFERENCES season (season_id),
+  club_id         INTEGER NOT NULL REFERENCES club (club_id),
+  UNIQUE (season_id, club_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_season_team_season ON season_team (season_id);
+
+CREATE TABLE IF NOT EXISTS season_team_player (
+  season_team_player_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  season_team_id         INTEGER NOT NULL REFERENCES season_team (season_team_id) ON DELETE CASCADE,
+  season_id              INTEGER NOT NULL REFERENCES season (season_id),
+  player_id              INTEGER NOT NULL REFERENCES player (player_id),
+  jersey_number          TEXT,
+  UNIQUE (season_team_id, player_id),
   UNIQUE (player_id, season_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_player_season_season ON player_season (season_id);
-CREATE INDEX IF NOT EXISTS idx_player_season_player ON player_season (player_id);
-
-CREATE TABLE IF NOT EXISTS roster_stint (
-  roster_stint_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-  player_season_id   INTEGER NOT NULL REFERENCES player_season (player_season_id),
-  club_id            INTEGER NOT NULL REFERENCES club (club_id),
-  start_date         TEXT NOT NULL,
-  end_date           TEXT,
-  enabled            INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
-  jersey_number      TEXT
-);
-
-CREATE INDEX IF NOT EXISTS idx_roster_stint_player_season ON roster_stint (player_season_id);
+CREATE INDEX IF NOT EXISTS idx_season_team_player_team ON season_team_player (season_team_id);
+CREATE INDEX IF NOT EXISTS idx_season_team_player_season ON season_team_player (season_id);
 
 CREATE TABLE IF NOT EXISTS audit_log (
   audit_id             INTEGER PRIMARY KEY AUTOINCREMENT,

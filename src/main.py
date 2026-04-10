@@ -24,6 +24,7 @@ from src.password_reset_repo import (
 )
 from src.passwords import hash_password, verify_password
 from src.queries import fetch_clubs, fetch_players
+from src import roster_repo
 from src.admin_routes import router as admin_router
 from src.roster_routes import router as roster_router
 from src.users_repo import (
@@ -133,24 +134,24 @@ CREATE TABLE IF NOT EXISTS season (
   end_year    TEXT NOT NULL,
   UNIQUE (start_year, end_year)
 );
-CREATE TABLE IF NOT EXISTS player_season (
-  player_season_id  INTEGER PRIMARY KEY AUTOINCREMENT,
-  player_id         INTEGER NOT NULL REFERENCES player (player_id),
-  season_id         INTEGER NOT NULL REFERENCES season (season_id),
+CREATE TABLE IF NOT EXISTS season_team (
+  season_team_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  season_id       INTEGER NOT NULL REFERENCES season (season_id),
+  club_id         INTEGER NOT NULL REFERENCES club (club_id),
+  UNIQUE (season_id, club_id)
+);
+CREATE INDEX IF NOT EXISTS idx_season_team_season ON season_team (season_id);
+CREATE TABLE IF NOT EXISTS season_team_player (
+  season_team_player_id  INTEGER PRIMARY KEY AUTOINCREMENT,
+  season_team_id         INTEGER NOT NULL REFERENCES season_team (season_team_id) ON DELETE CASCADE,
+  season_id              INTEGER NOT NULL REFERENCES season (season_id),
+  player_id              INTEGER NOT NULL REFERENCES player (player_id),
+  jersey_number          TEXT,
+  UNIQUE (season_team_id, player_id),
   UNIQUE (player_id, season_id)
 );
-CREATE INDEX IF NOT EXISTS idx_player_season_season ON player_season (season_id);
-CREATE INDEX IF NOT EXISTS idx_player_season_player ON player_season (player_id);
-CREATE TABLE IF NOT EXISTS roster_stint (
-  roster_stint_id    INTEGER PRIMARY KEY AUTOINCREMENT,
-  player_season_id   INTEGER NOT NULL REFERENCES player_season (player_season_id),
-  club_id            INTEGER NOT NULL REFERENCES club (club_id),
-  start_date         TEXT NOT NULL,
-  end_date           TEXT,
-  enabled            INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
-  jersey_number      TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_roster_stint_player_season ON roster_stint (player_season_id);
+CREATE INDEX IF NOT EXISTS idx_season_team_player_team ON season_team_player (season_team_id);
+CREATE INDEX IF NOT EXISTS idx_season_team_player_season ON season_team_player (season_id);
 CREATE TABLE IF NOT EXISTS audit_log (
   audit_id             INTEGER PRIMARY KEY AUTOINCREMENT,
   entity_type          TEXT NOT NULL,
@@ -168,6 +169,17 @@ def _ensure_roster_tables() -> None:
     with sqlite3.connect(DB_PATH) as conn:
         conn.execute("PRAGMA foreign_keys=ON")
         conn.executescript(_ROSTER_DDL)
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='roster_stint'"
+        )
+        if cur.fetchone():
+            conn.execute("DROP TABLE IF EXISTS roster_stint")
+        cur = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='player_season'"
+        )
+        if cur.fetchone():
+            conn.execute("DROP TABLE IF EXISTS player_season")
+        conn.commit()
 
 
 _PASSWORD_RESET_DDL = """
@@ -939,12 +951,17 @@ async def list_clubs(
     request: Request,
     success: str | None = Query(None),
 ) -> HTMLResponse:
+    clubs = fetch_clubs()
+    for c in clubs:
+        c["season_roster_options"] = roster_repo.list_season_teams_for_club(
+            int(c["club_id"])
+        )
     return templates.TemplateResponse(
         request,
         "clubs_list.html",
         {
             "success": success == "1",
-            "clubs": fetch_clubs(),
+            "clubs": clubs,
         },
     )
 

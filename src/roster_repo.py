@@ -1,10 +1,9 @@
-"""Seasons, player enrollments, roster stints, and audit log (SQLite)."""
+"""Seasons, season teams (clubs in a season), team rosters, and audit log (SQLite)."""
 
 from __future__ import annotations
 
 import json
 import sqlite3
-from datetime import date, datetime, timedelta
 from typing import Any
 
 from src.db_paths import DB_PATH
@@ -39,8 +38,8 @@ def list_seasons() -> list[dict[str, Any]]:
         cur = conn.execute(
             """
             SELECT s.season_id, s.start_year, s.end_year,
-                   (SELECT COUNT(*) FROM player_season ps WHERE ps.season_id = s.season_id)
-                   AS enrollment_count
+                   (SELECT COUNT(*) FROM season_team st WHERE st.season_id = s.season_id)
+                   AS team_count
             FROM season s
             ORDER BY s.start_year DESC, s.end_year DESC
             """
@@ -71,30 +70,142 @@ def insert_season(start_year: str, end_year: str, user_id: int) -> int:
         return sid
 
 
-def list_enrollments_for_season(season_id: int) -> list[dict[str, Any]]:
+def list_teams_for_season(season_id: int) -> list[dict[str, Any]]:
     with _connect() as conn:
         cur = conn.execute(
             """
-            SELECT ps.player_season_id, ps.player_id, ps.season_id,
-                   p.surname, p.name, p.player_id
-            FROM player_season ps
-            JOIN player p ON p.player_id = ps.player_id
-            WHERE ps.season_id = ?
-            ORDER BY p.surname COLLATE NOCASE, p.name COLLATE NOCASE
+            SELECT st.season_team_id, st.season_id, st.club_id, c.name AS club_name,
+                   (SELECT COUNT(*) FROM season_team_player stp
+                    WHERE stp.season_team_id = st.season_team_id) AS player_count
+            FROM season_team st
+            JOIN club c ON c.club_id = st.club_id
+            WHERE st.season_id = ?
+            ORDER BY c.name COLLATE NOCASE
             """,
             (season_id,),
         )
         return [dict(row) for row in cur.fetchall()]
 
 
-def list_players_not_in_season(season_id: int) -> list[dict[str, Any]]:
+def list_season_teams_for_club(club_id: int) -> list[dict[str, Any]]:
+    """Seasons in which this club is registered as a team (for roster links)."""
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT st.season_team_id, st.season_id, s.start_year, s.end_year
+            FROM season_team st
+            JOIN season s ON s.season_id = st.season_id
+            WHERE st.club_id = ?
+            ORDER BY s.start_year DESC, s.end_year DESC
+            """,
+            (club_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
+def list_clubs_not_in_season(season_id: int) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT c.club_id, c.name
+            FROM club c
+            WHERE c.club_id NOT IN (
+                SELECT club_id FROM season_team WHERE season_id = ?
+            )
+            ORDER BY c.name COLLATE NOCASE
+            """,
+            (season_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
+def insert_season_team(season_id: int, club_id: int, user_id: int) -> int:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO season_team (season_id, club_id)
+            VALUES (?, ?)
+            """,
+            (season_id, club_id),
+        )
+        st_id = int(cur.lastrowid)
+        _audit(
+            conn,
+            "season_team",
+            st_id,
+            "INSERT",
+            user_id,
+            {"season_id": season_id, "club_id": club_id},
+        )
+        conn.commit()
+        return st_id
+
+
+def delete_season_team(season_team_id: int, user_id: int) -> None:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT season_id, club_id FROM season_team WHERE season_team_id = ?",
+            (season_team_id,),
+        )
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError("Team not found.")
+        conn.execute(
+            "DELETE FROM season_team WHERE season_team_id = ?",
+            (season_team_id,),
+        )
+        _audit(
+            conn,
+            "season_team",
+            season_team_id,
+            "DELETE",
+            user_id,
+            {"season_id": row["season_id"], "club_id": row["club_id"]},
+        )
+        conn.commit()
+
+
+def fetch_season_team(season_team_id: int) -> dict[str, Any] | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT st.season_team_id, st.season_id, st.club_id, c.name AS club_name,
+                   s.start_year, s.end_year
+            FROM season_team st
+            JOIN club c ON c.club_id = st.club_id
+            JOIN season s ON s.season_id = st.season_id
+            WHERE st.season_team_id = ?
+            """,
+            (season_team_id,),
+        )
+        row = cur.fetchone()
+        return dict(row) if row else None
+
+
+def list_players_on_team(season_team_id: int) -> list[dict[str, Any]]:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT stp.season_team_player_id, stp.player_id, stp.jersey_number,
+                   p.surname, p.name
+            FROM season_team_player stp
+            JOIN player p ON p.player_id = stp.player_id
+            WHERE stp.season_team_id = ?
+            ORDER BY p.surname COLLATE NOCASE, p.name COLLATE NOCASE
+            """,
+            (season_team_id,),
+        )
+        return [dict(row) for row in cur.fetchall()]
+
+
+def list_players_not_assigned_in_season(season_id: int) -> list[dict[str, Any]]:
     with _connect() as conn:
         cur = conn.execute(
             """
             SELECT p.player_id, p.surname, p.name
             FROM player p
             WHERE p.player_id NOT IN (
-                SELECT player_id FROM player_season WHERE season_id = ?
+                SELECT player_id FROM season_team_player WHERE season_id = ?
             )
             ORDER BY p.surname COLLATE NOCASE, p.name COLLATE NOCASE
             """,
@@ -103,191 +214,105 @@ def list_players_not_in_season(season_id: int) -> list[dict[str, Any]]:
         return [dict(row) for row in cur.fetchall()]
 
 
-def insert_player_season(player_id: int, season_id: int, user_id: int) -> int:
-    with _connect() as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO player_season (player_id, season_id)
-            VALUES (?, ?)
-            """,
-            (player_id, season_id),
-        )
-        ps_id = int(cur.lastrowid)
-        _audit(
-            conn,
-            "player_season",
-            ps_id,
-            "INSERT",
-            user_id,
-            {"player_id": player_id, "season_id": season_id},
-        )
-        conn.commit()
-        return ps_id
-
-
-def fetch_player_season(player_season_id: int) -> dict[str, Any] | None:
-    with _connect() as conn:
-        cur = conn.execute(
-            """
-            SELECT ps.player_season_id, ps.player_id, ps.season_id,
-                   p.surname, p.name,
-                   s.start_year, s.end_year
-            FROM player_season ps
-            JOIN player p ON p.player_id = ps.player_id
-            JOIN season s ON s.season_id = ps.season_id
-            WHERE ps.player_season_id = ?
-            """,
-            (player_season_id,),
-        )
-        row = cur.fetchone()
-        return dict(row) if row else None
-
-
-def list_roster_stints(player_season_id: int) -> list[dict[str, Any]]:
-    with _connect() as conn:
-        cur = conn.execute(
-            """
-            SELECT rs.roster_stint_id, rs.player_season_id, rs.club_id,
-                   rs.start_date, rs.end_date, rs.enabled, rs.jersey_number,
-                   c.name AS club_name
-            FROM roster_stint rs
-            JOIN club c ON c.club_id = rs.club_id
-            WHERE rs.player_season_id = ?
-            ORDER BY rs.start_date ASC, rs.roster_stint_id ASC
-            """,
-            (player_season_id,),
-        )
-        return [dict(row) for row in cur.fetchall()]
-
-
-def parse_iso_date(s: str) -> date:
-    return datetime.strptime(s.strip(), "%Y-%m-%d").date()
-
-
-def fetch_roster_stint_player_season_id(roster_stint_id: int) -> int | None:
-    with _connect() as conn:
-        cur = conn.execute(
-            "SELECT player_season_id FROM roster_stint WHERE roster_stint_id = ?",
-            (roster_stint_id,),
-        )
-        row = cur.fetchone()
-        return int(row["player_season_id"]) if row else None
-
-
-def insert_roster_stint(
-    player_season_id: int,
-    club_id: int,
-    start_date: str,
+def insert_team_player(
+    season_team_id: int,
+    player_id: int,
     jersey_number: str | None,
     user_id: int,
 ) -> int:
-    new_start = parse_iso_date(start_date)
     jersey = (jersey_number or "").strip() or None
-
     with _connect() as conn:
         cur = conn.execute(
-            """
-            SELECT roster_stint_id, start_date, end_date
-            FROM roster_stint
-            WHERE player_season_id = ? AND enabled = 1 AND end_date IS NULL
-            """,
-            (player_season_id,),
+            "SELECT season_id FROM season_team WHERE season_team_id = ?",
+            (season_team_id,),
         )
-        open_rows = cur.fetchall()
-        if len(open_rows) > 1:
-            raise ValueError(
-                "More than one open stint exists for this enrollment; fix the data first."
-            )
-        prev_end = new_start - timedelta(days=1)
-        for row in open_rows:
-            old_start = parse_iso_date(row["start_date"])
-            if prev_end < old_start:
-                raise ValueError(
-                    "New stint would end the previous one before it started; "
-                    "choose a later start date or close the current stint manually."
-                )
-            conn.execute(
-                "UPDATE roster_stint SET end_date = ? WHERE roster_stint_id = ?",
-                (prev_end.isoformat(), row["roster_stint_id"]),
-            )
-            _audit(
-                conn,
-                "roster_stint",
-                int(row["roster_stint_id"]),
-                "UPDATE",
-                user_id,
-                {"field": "end_date", "value": prev_end.isoformat(), "reason": "new_stint"},
-            )
+        row = cur.fetchone()
+        if row is None:
+            raise ValueError("Team not found.")
+        season_id = int(row["season_id"])
+        cur = conn.execute(
+            """
+            SELECT 1 FROM season_team_player
+            WHERE player_id = ? AND season_id = ?
+            """,
+            (player_id, season_id),
+        )
+        if cur.fetchone():
+            raise ValueError("This player is already on a team in this season.")
 
         cur = conn.execute(
             """
-            INSERT INTO roster_stint (player_season_id, club_id, start_date, end_date, enabled, jersey_number)
-            VALUES (?, ?, ?, NULL, 1, ?)
+            INSERT INTO season_team_player (season_team_id, season_id, player_id, jersey_number)
+            VALUES (?, ?, ?, ?)
             """,
-            (player_season_id, club_id, new_start.isoformat(), jersey),
+            (season_team_id, season_id, player_id, jersey),
         )
-        rid = int(cur.lastrowid)
+        stp_id = int(cur.lastrowid)
         _audit(
             conn,
-            "roster_stint",
-            rid,
+            "season_team_player",
+            stp_id,
             "INSERT",
             user_id,
             {
-                "player_season_id": player_season_id,
-                "club_id": club_id,
-                "start_date": new_start.isoformat(),
+                "season_team_id": season_team_id,
+                "season_id": season_id,
+                "player_id": player_id,
                 "jersey_number": jersey,
             },
         )
         conn.commit()
-        return rid
+        return stp_id
 
 
-def end_roster_stint(roster_stint_id: int, end_date: str, user_id: int) -> None:
-    end_d = parse_iso_date(end_date)
+def fetch_season_id_for_team_player_row(season_team_player_id: int) -> int | None:
     with _connect() as conn:
         cur = conn.execute(
-            "SELECT start_date, end_date FROM roster_stint WHERE roster_stint_id = ?",
-            (roster_stint_id,),
+            "SELECT season_id FROM season_team_player WHERE season_team_player_id = ?",
+            (season_team_player_id,),
+        )
+        row = cur.fetchone()
+        return int(row["season_id"]) if row else None
+
+
+def fetch_season_team_id_for_team_player_row(season_team_player_id: int) -> int | None:
+    with _connect() as conn:
+        cur = conn.execute(
+            "SELECT season_team_id FROM season_team_player WHERE season_team_player_id = ?",
+            (season_team_player_id,),
+        )
+        row = cur.fetchone()
+        return int(row["season_team_id"]) if row else None
+
+
+def delete_team_player(season_team_player_id: int, user_id: int) -> None:
+    with _connect() as conn:
+        cur = conn.execute(
+            """
+            SELECT season_team_id, season_id, player_id
+            FROM season_team_player
+            WHERE season_team_player_id = ?
+            """,
+            (season_team_player_id,),
         )
         row = cur.fetchone()
         if row is None:
-            raise ValueError("Stint not found.")
-        if row["end_date"] is not None:
-            raise ValueError("Stint already ended.")
-        start_d = parse_iso_date(row["start_date"])
-        if end_d < start_d:
-            raise ValueError("End date cannot be before start date.")
+            raise ValueError("Assignment not found.")
         conn.execute(
-            "UPDATE roster_stint SET end_date = ? WHERE roster_stint_id = ?",
-            (end_d.isoformat(), roster_stint_id),
+            "DELETE FROM season_team_player WHERE season_team_player_id = ?",
+            (season_team_player_id,),
         )
         _audit(
             conn,
-            "roster_stint",
-            roster_stint_id,
-            "UPDATE",
+            "season_team_player",
+            season_team_player_id,
+            "DELETE",
             user_id,
-            {"field": "end_date", "value": end_d.isoformat()},
-        )
-        conn.commit()
-
-
-def set_roster_stint_enabled(roster_stint_id: int, enabled: bool, user_id: int) -> None:
-    v = 1 if enabled else 0
-    with _connect() as conn:
-        conn.execute(
-            "UPDATE roster_stint SET enabled = ? WHERE roster_stint_id = ?",
-            (v, roster_stint_id),
-        )
-        _audit(
-            conn,
-            "roster_stint",
-            roster_stint_id,
-            "UPDATE",
-            user_id,
-            {"field": "enabled", "value": enabled},
+            {
+                "season_team_id": row["season_team_id"],
+                "season_id": row["season_id"],
+                "player_id": row["player_id"],
+            },
         )
         conn.commit()
 

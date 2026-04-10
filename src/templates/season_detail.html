@@ -19,34 +19,78 @@
       {% endif %}
 
       <p class="admin-toolbar">
-        <a href="/seasons/{{ season.season_id }}/enroll" class="btn">Enroll player</a>
+        <a href="/seasons/{{ season.season_id }}/add-team" class="btn">Add team (club)</a>
       </p>
 
-      {% if enrollments %}
+      {% if teams %}
+      <div class="field season-team-picker">
+        <label for="season-team-jump">
+          <span>Go to team roster</span>
+        </label>
+        <select id="season-team-jump" class="season-team-jump-select" aria-label="Choose a team to open its roster">
+          <option value="">Select a team…</option>
+          {% for t in teams %}
+          <option value="/season-team/{{ t.season_team_id }}">{{ t.club_name }} ({{ t.player_count }} players)</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <p class="hint">
+        Open a team’s roster to view or edit its players. You can use the menu above or the links in the table.
+      </p>
+
       <div class="table-scroll">
         <table class="table">
           <thead>
             <tr>
-              <th class="table__col-surname" scope="col">Surname</th>
-              <th scope="col">Name</th>
+              <th scope="col">Club (team)</th>
+              <th scope="col">Players</th>
+              <th scope="col">Roster</th>
               <th scope="col"></th>
             </tr>
           </thead>
           <tbody>
-            {% for e in enrollments %}
+            {% for t in teams %}
             <tr>
-              <td class="table__col-surname">{{ e.surname }}</td>
-              <td>{{ e.name }}</td>
-              <td><a href="/player-season/{{ e.player_season_id }}">Roster &amp; stints</a></td>
+              <td>
+                <a href="/season-team/{{ t.season_team_id }}">{{ t.club_name }}</a>
+              </td>
+              <td>{{ t.player_count }}</td>
+              <td>
+                <a href="/season-team/{{ t.season_team_id }}" class="btn btn--small">Open roster</a>
+              </td>
+              <td class="table__admin-actions">
+                <form
+                  method="post"
+                  action="/season-team/{{ t.season_team_id }}/remove"
+                  class="admin-inline-form"
+                  onsubmit="return confirm('Remove this team from the season? Players on this team will be unassigned.');"
+                >
+                  <button type="submit" class="btn btn--small btn--secondary">Remove team</button>
+                </form>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
-      <p class="table-meta">{{ enrollments | length }} enrollment{% if enrollments | length != 1 %}s{% endif %}</p>
+      <p class="table-meta">{{ teams | length }} team{% if teams | length != 1 %}s{% endif %}</p>
       {% else %}
-      <p class="empty">No players enrolled. <a href="/seasons/{{ season.season_id }}/enroll">Enroll a player</a>.</p>
+      <p class="empty">
+        No teams yet.
+        <a href="/seasons/{{ season.season_id }}/add-team">Add a club as a team</a>
+        for this season.
+      </p>
       {% endif %}
     </main>
+    <script>
+      (function () {
+        var sel = document.getElementById("season-team-jump");
+        if (!sel) return;
+        sel.addEventListener("change", function () {
+          if (sel.value) window.location.href = sel.value;
+        });
+      })();
+    </script>
   </body>
 </html>

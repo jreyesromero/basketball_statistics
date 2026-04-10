@@ -39,9 +39,14 @@ def _bootstrap_and_login(client: TestClient, email: str, password: str) -> None:
             "password": password,
             "password_confirm": password,
         },
+        follow_redirects=False,
     )
     assert r.status_code == 303, r.text
-    r2 = client.post("/login", data={"email": email, "password": password})
+    r2 = client.post(
+        "/login",
+        data={"email": email, "password": password},
+        follow_redirects=False,
+    )
     assert r2.status_code == 303, r2.text
 
 
@@ -57,6 +62,7 @@ def test_create_player_via_post(client):
             "address": "1 Court St",
             "date_of_birth": "2001-03-15",
         },
+        follow_redirects=False,
     )
     assert r.status_code == 303
     assert r.headers.get("location", "").startswith("/players?success=1")
@@ -89,6 +95,7 @@ def test_create_club_via_post(client):
             "address": "Arena Rd",
             "foundation_date": "1988-11-20",
         },
+        follow_redirects=False,
     )
     assert r.status_code == 303
     assert r.headers.get("location", "").startswith("/clubs?success=1")
@@ -116,6 +123,7 @@ def test_create_season_via_post(client):
     r = c.post(
         "/seasons/new",
         data={"start_year": "2025", "end_year": "2026"},
+        follow_redirects=False,
     )
     assert r.status_code == 303
     loc = r.headers.get("location", "")
@@ -140,7 +148,11 @@ def test_create_season_duplicate_returns_422(client):
     c, _db_path = client
     _bootstrap_and_login(c, "admin@example.com", "adminpass1")
 
-    r1 = c.post("/seasons/new", data={"start_year": "2030", "end_year": "2031"})
+    r1 = c.post(
+        "/seasons/new",
+        data={"start_year": "2030", "end_year": "2031"},
+        follow_redirects=False,
+    )
     assert r1.status_code == 303
     r2 = c.post("/seasons/new", data={"start_year": "2030", "end_year": "2031"})
     assert r2.status_code == 422

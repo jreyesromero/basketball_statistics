@@ -1,4 +1,4 @@
-"""Tests for seasons, enrollments, roster stints, and audit log."""
+"""Tests for seasons, season teams, and team rosters."""
 
 from __future__ import annotations
 
@@ -27,74 +27,65 @@ def roster_db(tmp_path, monkeypatch):
             ("Ada", "Lovelace", "2000-01-01"),
         )
         conn.execute(
+            """
+            INSERT INTO player (name, surname, date_of_birth)
+            VALUES (?, ?, ?)
+            """,
+            ("Alan", "Turing", "1999-06-01"),
+        )
+        conn.execute(
             "INSERT INTO club (name, foundation_date) VALUES (?, ?)",
             ("Test Club", "1990-01-01"),
+        )
+        conn.execute(
+            "INSERT INTO club (name, foundation_date) VALUES (?, ?)",
+            ("Other Club", "1991-01-01"),
         )
         conn.commit()
     return db_path
 
 
-def test_insert_season_and_enrollment(roster_db):
+def test_season_team_and_assign_player(roster_db):
     from src import roster_repo
 
     sid = roster_repo.insert_season("2024", "2025", user_id=1)
-    assert sid >= 1
-    ps_id = roster_repo.insert_player_season(1, sid, user_id=1)
-    ps = roster_repo.fetch_player_season(ps_id)
-    assert ps["surname"] == "Lovelace"
-    assert ps["start_year"] == "2024"
+    st_id = roster_repo.insert_season_team(sid, 1, user_id=1)
+    teams = roster_repo.list_teams_for_season(sid)
+    assert len(teams) == 1
+    assert teams[0]["club_name"] == "Test Club"
+
+    stp_id = roster_repo.insert_team_player(st_id, 1, "7", user_id=1)
+    players = roster_repo.list_players_on_team(st_id)
+    assert len(players) == 1
+    assert players[0]["surname"] == "Lovelace"
+    assert players[0]["jersey_number"] == "7"
+
+    roster_repo.delete_team_player(stp_id, user_id=1)
+    assert roster_repo.list_players_on_team(st_id) == []
 
 
-def test_new_stint_auto_closes_previous(roster_db):
+def test_player_one_team_per_season(roster_db):
     from src import roster_repo
 
     sid = roster_repo.insert_season("2024", "2025", user_id=1)
-    ps_id = roster_repo.insert_player_season(1, sid, user_id=1)
-    r1 = roster_repo.insert_roster_stint(
-        ps_id, 1, "2024-01-01", "10", user_id=1
-    )
-    r2 = roster_repo.insert_roster_stint(
-        ps_id, 1, "2024-06-01", None, user_id=1
-    )
-    assert r2 > r1
-    stints = roster_repo.list_roster_stints(ps_id)
-    assert len(stints) == 2
-    first = next(s for s in stints if s["roster_stint_id"] == r1)
-    second = next(s for s in stints if s["roster_stint_id"] == r2)
-    assert first["end_date"] == "2024-05-31"
-    assert second["end_date"] is None
+    t1 = roster_repo.insert_season_team(sid, 1, user_id=1)
+    t2 = roster_repo.insert_season_team(sid, 2, user_id=1)
+    roster_repo.insert_team_player(t1, 1, None, user_id=1)
+    with pytest.raises(ValueError, match="already on a team"):
+        roster_repo.insert_team_player(t2, 1, None, user_id=1)
 
 
-def test_new_stint_rejects_invalid_close(roster_db):
+def test_delete_season_team_removes_assignments(roster_db):
     from src import roster_repo
 
     sid = roster_repo.insert_season("2024", "2025", user_id=1)
-    ps_id = roster_repo.insert_player_season(1, sid, user_id=1)
-    roster_repo.insert_roster_stint(ps_id, 1, "2024-06-01", None, user_id=1)
-    with pytest.raises(ValueError, match="before it started"):
-        roster_repo.insert_roster_stint(ps_id, 1, "2024-01-01", None, user_id=1)
-
-
-def test_multiple_open_stints_raises(roster_db):
-    from src import roster_repo
-
-    sid = roster_repo.insert_season("2024", "2025", user_id=1)
-    ps_id = roster_repo.insert_player_season(1, sid, user_id=1)
+    st_id = roster_repo.insert_season_team(sid, 1, user_id=1)
+    roster_repo.insert_team_player(st_id, 1, None, user_id=1)
+    roster_repo.delete_season_team(st_id, user_id=1)
+    assert roster_repo.list_teams_for_season(sid) == []
     with sqlite3.connect(roster_db) as conn:
-        conn.execute(
-            """
-            INSERT INTO roster_stint (player_season_id, club_id, start_date, end_date, enabled, jersey_number)
-            VALUES (?, 1, '2024-01-01', NULL, 1, NULL)
-            """,
-            (ps_id,),
-        )
-        conn.execute(
-            """
-            INSERT INTO roster_stint (player_season_id, club_id, start_date, end_date, enabled, jersey_number)
-            VALUES (?, 1, '2024-02-01', NULL, 1, NULL)
-            """,
-            (ps_id,),
-        )
-        conn.commit()
-    with pytest.raises(ValueError, match="More than one open stint"):
-        roster_repo.insert_roster_stint(ps_id, 1, "2024-09-01", None, user_id=1)
+        n = conn.execute(
+            "SELECT COUNT(*) FROM season_team_player WHERE season_id = ?",
+            (sid,),
+        ).fetchone()[0]
+    assert n == 0

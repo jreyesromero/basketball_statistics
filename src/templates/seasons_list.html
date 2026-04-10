@@ -23,7 +23,7 @@
           <thead>
             <tr>
               <th scope="col">Season</th>
-              <th scope="col">Enrollments</th>
+              <th scope="col">Teams</th>
               <th scope="col"></th>
             </tr>
           </thead>
@@ -31,7 +31,7 @@
             {% for s in seasons %}
             <tr>
               <td>{{ s.start_year }}–{{ s.end_year }}</td>
-              <td>{{ s.enrollment_count }}</td>
+              <td>{{ s.team_count }}</td>
               <td><a href="/seasons/{{ s.season_id }}">Open</a></td>
             </tr>
             {% endfor %}

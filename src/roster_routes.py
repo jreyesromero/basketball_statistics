@@ -1,6 +1,4 @@
-"""Seasons, enrollments, and roster stints (HTML UI)."""
-
-from datetime import date
+"""Seasons, season teams (clubs), and team rosters (HTML UI)."""
 
 import sqlite3
 from fastapi import APIRouter, Form, Path, Request
@@ -8,7 +6,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from src.db_paths import SRC_DIR
-from src.queries import fetch_clubs
 from src import roster_repo
 
 templates = Jinja2Templates(directory=str(SRC_DIR / "templates"))
@@ -18,6 +15,28 @@ router = APIRouter(tags=["roster"])
 
 def _current_user_id(request: Request) -> int:
     return int(request.state.current_user["user_id"])
+
+
+def _season_team_detail_bundle(
+    season_team_id: int,
+    *,
+    error: str | None,
+) -> dict | None:
+    """Context for team roster page; None if team missing."""
+    team = roster_repo.fetch_season_team(season_team_id)
+    if team is None:
+        return None
+    sid = int(team["season_id"])
+    season = roster_repo.fetch_season(sid)
+    if season is None:
+        return None
+    return {
+        "team": team,
+        "season": season,
+        "players": roster_repo.list_players_on_team(season_team_id),
+        "available_players": roster_repo.list_players_not_assigned_in_season(sid),
+        "error": error,
+    }
 
 
 @router.get("/seasons", response_class=HTMLResponse, response_model=None)
@@ -81,235 +100,196 @@ async def season_detail(request: Request, season_id: int = Path(..., ge=1)):
     season = roster_repo.fetch_season(season_id)
     if season is None:
         return RedirectResponse(url="/seasons", status_code=303)
-    enrollments = roster_repo.list_enrollments_for_season(season_id)
+    teams = roster_repo.list_teams_for_season(season_id)
     return templates.TemplateResponse(
         request,
         "season_detail.html",
         {
             "season": season,
-            "enrollments": enrollments,
+            "teams": teams,
             "error": None,
         },
     )
 
 
-@router.get("/seasons/{season_id}/enroll", response_class=HTMLResponse, response_model=None)
-async def enroll_form(request: Request, season_id: int = Path(..., ge=1)):
+@router.get("/seasons/{season_id}/add-team", response_class=HTMLResponse, response_model=None)
+async def add_team_form(request: Request, season_id: int = Path(..., ge=1)):
     season = roster_repo.fetch_season(season_id)
     if season is None:
         return RedirectResponse(url="/seasons", status_code=303)
-    players = roster_repo.list_players_not_in_season(season_id)
+    clubs = roster_repo.list_clubs_not_in_season(season_id)
     return templates.TemplateResponse(
         request,
-        "enroll_new.html",
+        "season_add_team.html",
         {
             "season": season,
-            "players": players,
+            "clubs": clubs,
             "error": None,
         },
     )
 
 
-@router.post("/seasons/{season_id}/enroll", response_model=None)
-async def enroll_submit(
+@router.post("/seasons/{season_id}/add-team", response_model=None)
+async def add_team_submit(
     request: Request,
     season_id: int = Path(..., ge=1),
-    player_id: int = Form(...),
+    club_id: int = Form(...),
 ):
     season = roster_repo.fetch_season(season_id)
     if season is None:
         return RedirectResponse(url="/seasons", status_code=303)
-    eligible = {p["player_id"] for p in roster_repo.list_players_not_in_season(season_id)}
-    if player_id not in eligible:
+    eligible = {c["club_id"] for c in roster_repo.list_clubs_not_in_season(season_id)}
+    if club_id not in eligible:
         return templates.TemplateResponse(
             request,
-            "enroll_new.html",
+            "season_add_team.html",
             {
                 "season": season,
-                "players": roster_repo.list_players_not_in_season(season_id),
-                "error": "That player is already enrolled or invalid.",
+                "clubs": roster_repo.list_clubs_not_in_season(season_id),
+                "error": "That club is already in this season or is invalid.",
             },
             status_code=422,
         )
     try:
-        ps_id = roster_repo.insert_player_season(
-            player_id, season_id, _current_user_id(request)
+        roster_repo.insert_season_team(
+            season_id, club_id, _current_user_id(request)
         )
     except sqlite3.IntegrityError:
         return templates.TemplateResponse(
             request,
-            "enroll_new.html",
+            "season_add_team.html",
             {
                 "season": season,
-                "players": roster_repo.list_players_not_in_season(season_id),
-                "error": "This player is already enrolled in this season.",
+                "clubs": roster_repo.list_clubs_not_in_season(season_id),
+                "error": "This club is already registered for this season.",
             },
             status_code=422,
         )
     except sqlite3.Error:
         return templates.TemplateResponse(
             request,
-            "enroll_new.html",
+            "season_add_team.html",
             {
                 "season": season,
-                "players": roster_repo.list_players_not_in_season(season_id),
-                "error": "Could not enroll the player.",
+                "clubs": roster_repo.list_clubs_not_in_season(season_id),
+                "error": "Could not add the team.",
             },
             status_code=500,
         )
-    return RedirectResponse(url=f"/player-season/{ps_id}", status_code=303)
+    return RedirectResponse(url=f"/seasons/{season_id}", status_code=303)
 
 
-@router.get("/player-season/{player_season_id}", response_class=HTMLResponse, response_model=None)
-async def player_season_detail(
-    request: Request,
-    player_season_id: int = Path(..., ge=1),
-):
-    ps = roster_repo.fetch_player_season(player_season_id)
-    if ps is None:
+@router.get("/seasons/{season_id}/team-management", response_model=None)
+async def team_management_redirect(season_id: int = Path(..., ge=1)):
+    """Old URL: send users back to the season page (rosters are per team now)."""
+    season = roster_repo.fetch_season(season_id)
+    if season is None:
         return RedirectResponse(url="/seasons", status_code=303)
-    stints = roster_repo.list_roster_stints(player_season_id)
-    clubs = fetch_clubs()
+    return RedirectResponse(url=f"/seasons/{season_id}", status_code=303)
+
+
+@router.post("/season-team/{season_team_id}/remove", response_model=None)
+async def remove_team_from_season(
+    request: Request,
+    season_team_id: int = Path(..., ge=1),
+):
+    st = roster_repo.fetch_season_team(season_team_id)
+    if st is None:
+        return RedirectResponse(url="/seasons", status_code=303)
+    sid = int(st["season_id"])
+    try:
+        roster_repo.delete_season_team(season_team_id, _current_user_id(request))
+    except ValueError:
+        return RedirectResponse(url=f"/seasons/{sid}", status_code=303)
+    except sqlite3.Error:
+        pass
+    return RedirectResponse(url=f"/seasons/{sid}", status_code=303)
+
+
+@router.get("/season-team/{season_team_id}", response_class=HTMLResponse, response_model=None)
+async def season_team_detail(
+    request: Request,
+    season_team_id: int = Path(..., ge=1),
+):
+    ctx = _season_team_detail_bundle(season_team_id, error=None)
+    if ctx is None:
+        return RedirectResponse(url="/seasons", status_code=303)
     return templates.TemplateResponse(
         request,
-        "player_season_detail.html",
-        {
-            "ps": ps,
-            "stints": stints,
-            "clubs": clubs,
-            "error": None,
-            "max_date": date.today().isoformat(),
-        },
+        "season_team_detail.html",
+        ctx,
     )
 
 
-@router.post("/player-season/{player_season_id}/stint", response_model=None)
-async def roster_stint_create(
+@router.post("/season-team/{season_team_id}/assign-player", response_model=None)
+async def assign_player_to_team(
     request: Request,
-    player_season_id: int = Path(..., ge=1),
-    club_id: int = Form(...),
-    start_date: str = Form(...),
+    season_team_id: int = Path(..., ge=1),
+    player_id: int = Form(...),
     jersey_number: str = Form(""),
 ):
-    ps = roster_repo.fetch_player_season(player_season_id)
-    if ps is None:
+    st = roster_repo.fetch_season_team(season_team_id)
+    if st is None:
         return RedirectResponse(url="/seasons", status_code=303)
-    clubs = fetch_clubs()
-    stints = roster_repo.list_roster_stints(player_season_id)
-    ctx = {
-        "ps": ps,
-        "stints": stints,
-        "clubs": clubs,
-        "max_date": date.today().isoformat(),
+    sid = int(st["season_id"])
+    eligible = {
+        p["player_id"] for p in roster_repo.list_players_not_assigned_in_season(sid)
     }
-    try:
-        roster_repo.parse_iso_date(start_date.strip())
-    except ValueError:
+
+    def err_response(msg: str):
+        ctx = _season_team_detail_bundle(season_team_id, error=msg)
+        if ctx is None:
+            return RedirectResponse(url="/seasons", status_code=303)
         return templates.TemplateResponse(
             request,
-            "player_season_detail.html",
-            {**ctx, "error": "Start date must be YYYY-MM-DD."},
+            "season_team_detail.html",
+            ctx,
             status_code=422,
         )
-    if not any(c["club_id"] == club_id for c in clubs):
-        return templates.TemplateResponse(
-            request,
-            "player_season_detail.html",
-            {**ctx, "error": "Invalid club."},
-            status_code=422,
+
+    if player_id not in eligible:
+        return err_response(
+            "That player is already on a team this season or is invalid."
         )
     try:
-        roster_repo.insert_roster_stint(
-            player_season_id,
-            club_id,
-            start_date.strip(),
+        roster_repo.insert_team_player(
+            season_team_id,
+            player_id,
             jersey_number,
             _current_user_id(request),
         )
     except ValueError as e:
-        return templates.TemplateResponse(
-            request,
-            "player_season_detail.html",
-            {**ctx, "error": str(e)},
-            status_code=422,
-        )
+        return err_response(str(e))
+    except sqlite3.IntegrityError:
+        return err_response("This player is already assigned in this season.")
     except sqlite3.Error:
-        return templates.TemplateResponse(
-            request,
-            "player_season_detail.html",
-            {**ctx, "error": "Could not save the roster stint."},
-            status_code=500,
-        )
-    return RedirectResponse(url=f"/player-season/{player_season_id}", status_code=303)
+        return err_response("Could not assign the player.")
+    return RedirectResponse(
+        url=f"/season-team/{season_team_id}",
+        status_code=303,
+    )
 
 
-@router.post("/roster-stint/{roster_stint_id}/end", response_model=None)
-async def roster_stint_end(
+@router.post("/season-team-player/{season_team_player_id}/remove", response_model=None)
+async def remove_player_from_team(
     request: Request,
-    roster_stint_id: int = Path(..., ge=1),
-    end_date: str = Form(...),
+    season_team_player_id: int = Path(..., ge=1),
 ):
-    ps_id = roster_repo.fetch_roster_stint_player_season_id(roster_stint_id)
-    if ps_id is None:
+    st_id = roster_repo.fetch_season_team_id_for_team_player_row(
+        season_team_player_id
+    )
+    if st_id is None:
         return RedirectResponse(url="/seasons", status_code=303)
     try:
-        roster_repo.parse_iso_date(end_date.strip())
+        roster_repo.delete_team_player(
+            season_team_player_id,
+            _current_user_id(request),
+        )
     except ValueError:
-        ps = roster_repo.fetch_player_season(ps_id)
-        if ps is None:
-            return RedirectResponse(url="/seasons", status_code=303)
-        return templates.TemplateResponse(
-            request,
-            "player_season_detail.html",
-            {
-                "ps": ps,
-                "stints": roster_repo.list_roster_stints(ps_id),
-                "clubs": fetch_clubs(),
-                "max_date": date.today().isoformat(),
-                "error": "End date must be YYYY-MM-DD.",
-            },
-            status_code=422,
-        )
-    try:
-        roster_repo.end_roster_stint(
-            roster_stint_id,
-            end_date.strip(),
-            _current_user_id(request),
-        )
-    except ValueError as e:
-        ps = roster_repo.fetch_player_season(ps_id)
-        if ps is None:
-            return RedirectResponse(url="/seasons", status_code=303)
-        return templates.TemplateResponse(
-            request,
-            "player_season_detail.html",
-            {
-                "ps": ps,
-                "stints": roster_repo.list_roster_stints(ps_id),
-                "clubs": fetch_clubs(),
-                "max_date": date.today().isoformat(),
-                "error": str(e),
-            },
-            status_code=422,
-        )
-    return RedirectResponse(url=f"/player-season/{ps_id}", status_code=303)
-
-
-@router.post("/roster-stint/{roster_stint_id}/enabled", response_model=None)
-async def roster_stint_toggle_enabled(
-    request: Request,
-    roster_stint_id: int = Path(..., ge=1),
-    enabled: str = Form(...),
-):
-    ps_id = roster_repo.fetch_roster_stint_player_season_id(roster_stint_id)
-    if ps_id is None:
-        return RedirectResponse(url="/seasons", status_code=303)
-    try:
-        roster_repo.set_roster_stint_enabled(
-            roster_stint_id,
-            enabled == "1",
-            _current_user_id(request),
-        )
+        return RedirectResponse(url=f"/season-team/{st_id}", status_code=303)
     except sqlite3.Error:
         pass
-    return RedirectResponse(url=f"/player-season/{ps_id}", status_code=303)
+    return RedirectResponse(
+        url=f"/season-team/{st_id}",
+        status_code=303,
+    )

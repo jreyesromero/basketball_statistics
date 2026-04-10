@@ -19,6 +19,9 @@
       {% endif %}
 
       {% if clubs %}
+      <p class="hint">
+        To open a club’s roster, pick the season below. The club must already be added as a team in that season (from the season page).
+      </p>
       <div class="table-scroll">
         <table class="table">
           <thead>
@@ -27,6 +30,7 @@
               <th scope="col">Name</th>
               <th scope="col">Foundation date</th>
               <th scope="col">Address</th>
+              <th scope="col">Season roster</th>
             </tr>
           </thead>
           <tbody>
@@ -36,6 +40,25 @@
               <td>{{ c.name }}</td>
               <td>{{ c.foundation_date }}</td>
               <td class="table__address">{{ c.address if c.address else "—" }}</td>
+              <td class="table__club-roster">
+                {% if c.season_roster_options %}
+                <label class="visually-hidden" for="club-roster-{{ c.club_id }}">Season for roster</label>
+                <select
+                  id="club-roster-{{ c.club_id }}"
+                  class="club-roster-season-select"
+                  aria-label="Choose season to open roster for {{ c.name }}"
+                >
+                  <option value="">Choose season…</option>
+                  {% for st in c.season_roster_options %}
+                  <option value="/season-team/{{ st.season_team_id }}">
+                    {{ st.start_year }}–{{ st.end_year }}
+                  </option>
+                  {% endfor %}
+                </select>
+                {% else %}
+                <span class="hint">—</span>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -46,5 +69,14 @@
       <p class="empty">No clubs yet. <a href="/clubs/new">Add a club</a> to get started.</p>
       {% endif %}
     </main>
+    <script>
+      (function () {
+        document.querySelectorAll(".club-roster-season-select").forEach(function (sel) {
+          sel.addEventListener("change", function () {
+            if (sel.value) window.location.href = sel.value;
+          });
+        });
+      })();
+    </script>
   </body>
 </html>
