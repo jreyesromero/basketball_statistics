@@ -121,3 +121,36 @@ def test_fetch_season_team_id_for_team_player_row(roster_db):
     stp_id = roster_repo.insert_team_player(st_id, 1, None, user_id=1)
     assert roster_repo.fetch_season_team_id_for_team_player_row(stp_id) == st_id
     assert roster_repo.fetch_season_team_id_for_team_player_row(99999) is None
+
+
+def test_list_seasons_includes_team_count(roster_db):
+    from src import roster_repo
+
+    s1 = roster_repo.insert_season("2021", "2022", user_id=1)
+    s2 = roster_repo.insert_season("2023", "2024", user_id=1)
+    roster_repo.insert_season_team(s1, 1, user_id=1)
+    roster_repo.insert_season_team(s1, 2, user_id=1)
+    roster_repo.insert_season_team(s2, 1, user_id=1)
+
+    rows = roster_repo.list_seasons()
+    by_id = {int(r["season_id"]): r for r in rows}
+    assert by_id[s1]["team_count"] == 2
+    assert by_id[s2]["team_count"] == 1
+
+
+def test_fetch_season_team_and_list_players_not_assigned(roster_db):
+    from src import roster_repo
+
+    sid = roster_repo.insert_season("2024", "2025", user_id=1)
+    st_id = roster_repo.insert_season_team(sid, 1, user_id=1)
+    team = roster_repo.fetch_season_team(st_id)
+    assert team is not None
+    assert team["club_name"] == "Test Club"
+    assert team["start_year"] == "2024"
+
+    free = roster_repo.list_players_not_assigned_in_season(sid)
+    assert {p["player_id"] for p in free} == {1, 2}
+
+    roster_repo.insert_team_player(st_id, 1, None, user_id=1)
+    free2 = roster_repo.list_players_not_assigned_in_season(sid)
+    assert {p["player_id"] for p in free2} == {2}
