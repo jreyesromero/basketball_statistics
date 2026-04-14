@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+from collections.abc import AsyncIterator
 from datetime import date, datetime
 import os
 import smtplib
@@ -15,6 +17,7 @@ from src.api.clubs import router as clubs_api_router
 from src.api.players import router as players_api_router
 from src.db_paths import DB_PATH, SCHEMA_PATH, SRC_DIR
 from src.middleware_auth import RequireLoginMiddleware
+from src.observability import RequestLoggingMiddleware, configure_logging, log_json
 from src.password_reset_mail import send_password_reset_email
 from src.password_reset_repo import (
     delete_pending_resets_for_user,
@@ -66,7 +69,20 @@ def _reset_password_url(request: Request, raw_token: str) -> str:
     return f"{base}/reset-password?{q}"
 
 
-app = FastAPI(title="Basketball statistics")
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    configure_logging()
+    ensure_database()
+    log_json(
+        "application_startup",
+        db_path=str(DB_PATH),
+        schema_exists=str(SCHEMA_PATH.exists()),
+    )
+    yield
+    log_json("application_shutdown")
+
+
+app = FastAPI(title="Basketball statistics", lifespan=lifespan)
 app.add_middleware(RequireLoginMiddleware)
 app.add_middleware(
     SessionMiddleware,
@@ -75,6 +91,7 @@ app.add_middleware(
     same_site="lax",
     https_only=False,
 )
+app.add_middleware(RequestLoggingMiddleware)
 app.mount("/static", StaticFiles(directory=str(SRC_DIR / "static")), name="static")
 app.include_router(players_api_router, prefix="/api")
 app.include_router(clubs_api_router, prefix="/api")
@@ -214,11 +231,6 @@ def ensure_database() -> None:
     _ensure_password_reset_table()
 
 
-@app.on_event("startup")
-def _startup() -> None:
-    ensure_database()
-
-
 @app.get("/bootstrap", response_class=HTMLResponse, response_model=None)
 async def bootstrap_page(request: Request):
     if count_users() > 0:
@@ -263,12 +275,13 @@ async def bootstrap_submit(
             status_code=422,
         )
     try:
-        insert_user(
+        new_uid = insert_user(
             email_t,
             hash_password(password),
             is_active=True,
             is_admin=True,
         )
+        log_json("bootstrap_admin_created", user_id=new_uid)
     except sqlite3.IntegrityError:
         return templates.TemplateResponse(
             request,
@@ -421,6 +434,7 @@ async def forgot_password_submit(
             raw = issue_reset_token(user["user_id"])
             reset_url = _reset_password_url(request, raw)
             send_password_reset_email(user["email"], reset_url)
+            log_json("password_reset_requested", user_id=int(user["user_id"]))
         except sqlite3.Error:
             return templates.TemplateResponse(
                 request,

@@ -21,5 +21,11 @@ if [[ -z "${BASKET_SESSION_SECRET:-}" ]]; then
   echo "Generated ephemeral BASKET_SESSION_SECRET for this run (sign-in cookies reset when the server restarts)."
 fi
 
+# On-disk JSON logs (RotatingFileHandler). Override path or set BASKET_LOG_FILE= to disable.
+if [[ -z "${BASKET_LOG_FILE+x}" ]]; then
+  export BASKET_LOG_FILE="${ROOT}/data/logs/app.jsonl"
+fi
+
 echo "Starting app at http://127.0.0.1:8000 (Ctrl+C to stop)"
-exec uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
+# Structured JSON request logs from app; disable duplicate Uvicorn access lines.
+exec uvicorn src.main:app --reload --host 127.0.0.1 --port 8000 --no-access-log
