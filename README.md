@@ -6,11 +6,14 @@ A small web application for managing **basketball players** and **clubs** in a l
 
 - **Players:** add, list, and remove players (name, surname, date of birth, optional address). Date of birth cannot be in the future.
 - **Clubs:** add, list, and remove clubs (name, foundation date, optional address). Foundation date cannot be in the future.
+- **Seasons and rosters:** define seasons, attach clubs as teams for a season, assign players with optional jersey numbers (`/seasons`, …). A player can appear on only one team per season.
 - **Accounts:** register (non-admin users), sign in with email and password, session cookies (Argon2 password hashing).
+- **Password reset:** forgot-password flow with time-limited tokens. With **`BASKET_SMTP_HOST`** set, reset links are sent by email; otherwise the link is printed to **stderr** (handy for local development—watch the terminal where Uvicorn runs).
 - **First administrator:** if the database has **no users**, the app sends you to a **one-time bootstrap** screen to create the first admin account.
-- **Administration:** users with `is_admin` can open **User administration** (`/admin/users`) to create users, toggle active/admin flags, and delete users (with safeguards for the last admin).
+- **Administration:** users with `is_admin` can open **User administration** (`/admin/users`) to create users, toggle active/admin flags, and delete users (with safeguards for the last admin). Admins can view an **audit log** of roster-related changes (`/admin/audit-log`).
 - **JSON API:** `GET /api/players` and `GET /api/clubs` return lists as JSON when valid **HTTP Basic** credentials are supplied (see [Environment variables](#environment-variables)).
-- **Automated tests:** [pytest](https://pytest.org/) suite under `tests/` (password hashing, validation helpers, user repository, and DB queries against a temporary SQLite file).
+- **Structured logging:** JSON log lines to stdout and, by default when using `bin/run.sh`, to a rotating file under `data/logs/` (suitable for local **Grafana + Loki** via `monitoring/`).
+- **Automated tests:** [pytest](https://pytest.org/) suite under `tests/` (passwords, users, password-reset repo, queries, admin validation, roster repo, management routes, and more).
 
 ## Tech stack
 
@@ -30,25 +33,34 @@ Forms use `python-multipart`. Styling is plain **CSS** under `src/static/`.
 
 ```
 basketball_statistics/
-├── bin/run.sh           # Creates venv if needed, installs deps, starts Uvicorn
-├── Jenkinsfile          # Declarative pipeline (CI: venv, dev deps, pytest on `development`)
-├── pytest.ini           # pytest: testpaths, pythonpath for `src` imports
-├── requirements-dev.txt # App deps + pytest (for local runs and Jenkins)
-├── schema.sql           # Canonical SQL schema (also applied on first DB create)
-├── data/basket.sqlite   # SQLite file (created at runtime; often gitignored)
-├── requirements.txt
-├── tests/               # Unit / integration-style tests (pytest)
+├── bin/run.sh              # Creates venv if needed, installs deps, sets log path, starts Uvicorn (dev)
+├── Jenkinsfile             # CI: pytest on branch `development` (Multibranch or equivalent)
+├── Jenkinsfile.deploy      # Manual deploy over SSH (rsync + venv + systemd); separate Jenkins job
+├── monitoring/             # Optional Docker stack: Grafana + Loki + Promtail (see monitoring/README.md)
+├── pytest.ini
+├── requirements-dev.txt    # App deps + pytest (CI and local test runs)
+├── requirements.txt        # Runtime app dependencies
+├── schema.sql              # Canonical SQL schema (also applied on first DB create / migrations)
+├── data/
+│   ├── basket.sqlite       # Created at runtime (gitignored)
+│   └── logs/               # JSON logs when BASKET_LOG_FILE points here (gitignored except .gitkeep)
+├── tests/                  # pytest
 └── src/
-    ├── main.py          # App factory, HTML routes, DB bootstrap migrations
-    ├── db_paths.py      # Paths to DB and schema
-    ├── queries.py       # Read-only player/club queries
-    ├── users_repo.py    # User CRUD helpers
-    ├── passwords.py     # Argon2 helpers
+    ├── main.py             # App factory, auth pages, players/clubs HTML routes
+    ├── db_paths.py
+    ├── observability.py    # JSON logging, request middleware
+    ├── queries.py
+    ├── users_repo.py
+    ├── passwords.py
+    ├── password_reset_repo.py
+    ├── password_reset_mail.py
     ├── middleware_auth.py
-    ├── admin_routes.py  # /admin/* user management
-    ├── api/             # JSON routers + HTTP Basic dependency
-    ├── templates/       # Jinja HTML
-    └── static/          # CSS
+    ├── admin_routes.py     # /admin/* (users, audit log)
+    ├── roster_routes.py    # /seasons*, roster HTML
+    ├── roster_repo.py      # Seasons, teams, rosters, audit_log
+    ├── api/                # JSON routers + HTTP Basic dependency
+    ├── templates/
+    └── static/
 ```
 
 ## How to run
@@ -59,9 +71,9 @@ From the **repository root**:
 ./bin/run.sh
 ```
 
-Then open [http://127.0.0.1:8000](http://127.0.0.1:8000). The script creates `.venv` if missing, installs `requirements.txt`, and starts Uvicorn with reload.
+Then open [http://127.0.0.1:8000](http://127.0.0.1:8000). The script creates `.venv` if missing, installs `requirements.txt`, sets **`BASKET_LOG_FILE`** to `data/logs/app.jsonl` when unset, and starts Uvicorn with **`--reload`** on `127.0.0.1:8000`.
 
-If `BASKET_SESSION_SECRET` is not set, the script generates a **random secret for that run** (sessions invalid after restart). For a stable secret across restarts, set it yourself (see below).
+**Session secret:** `src/main.py` refuses to start unless **`BASKET_SESSION_SECRET`** is at least 32 characters. `bin/run.sh` generates one for the current process if the variable is unset (cookies reset when the server restarts). For production, set a stable secret (for example via systemd `EnvironmentFile`).
 
 Manual equivalent:
 
@@ -70,6 +82,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export BASKET_SESSION_SECRET="$(python -c 'import secrets; print(secrets.token_hex(32))')"
+export BASKET_LOG_FILE="${PWD}/data/logs/app.jsonl"   # optional; omit to log only to stdout
 uvicorn src.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
@@ -88,7 +101,7 @@ If you use an activated virtualenv (`source .venv/bin/activate`), you can use `p
 
 `pytest.ini` sets `testpaths = tests` and `pythonpath = .` so `import src.…` resolves correctly.
 
-## Jenkinsfile (continuous integration)
+## Jenkins (continuous integration)
 
 The repo root **`Jenkinsfile`** defines a **declarative Jenkins pipeline** that:
 
@@ -98,15 +111,37 @@ The repo root **`Jenkinsfile`** defines a **declarative Jenkins pipeline** that:
 
 Configure your Jenkins job (for example a **Multibranch Pipeline** pointed at this GitHub repository) so builds run on pushes to **`development`**. GitHub **webhooks** require a URL that GitHub can reach; **localhost** Jenkins is not reachable from the internet unless you use **Poll SCM**, a **tunnel** (e.g. ngrok), or Jenkins hosted on a public URL. Adjust the pipeline’s `when { branch 'development' }` blocks if your job does not set `BRANCH_NAME` (some single-branch jobs).
 
+## Jenkins (manual deploy)
+
+**`Jenkinsfile.deploy`** is intended for a **separate** Pipeline job (for example *Pipeline script from SCM* with **Script Path** `Jenkinsfile.deploy` and **no** automatic triggers). You run it when you choose to deploy.
+
+The pipeline checks out a configurable **git ref** (default `master`), **rsyncs** `src/`, `bin/`, `requirements.txt`, `schema.sql`, and `pytest.ini` to a target host (so a server-local **`data/basket.sqlite`** is not overwritten), then over SSH ensures a `.venv`, runs **`pip install -r requirements.txt`**, and optionally **`sudo systemctl restart`** a named unit.
+
+Prerequisites and parameters (SSH credential id, host, paths, systemd unit name) are documented in comments at the top of **`Jenkinsfile.deploy`**. The app process on the server should be defined in **systemd** for production (stable `BASKET_SESSION_SECRET`, bind address, no `--reload`); `bin/run.sh` remains oriented toward local development.
+
+## Local monitoring (optional)
+
+The **`monitoring/`** directory contains a **Docker Compose** stack (**Grafana**, **Loki**, **Promtail**) that ingests JSON Lines from **`data/logs/`** (same format the app writes when `BASKET_LOG_FILE` is set). See **[monitoring/README.md](monitoring/README.md)** for ports, quick start, and LogQL examples.
+
 ## Environment variables
+
+`.env` and `.env.*` are **gitignored**; set variables in your shell, systemd unit, or container. Common choices:
 
 | Variable | Purpose |
 |----------|---------|
-| `BASKET_SESSION_SECRET` | **Required** (min 32 characters) for signing session cookies. `bin/run.sh` generates one if unset. |
+| `BASKET_SESSION_SECRET` | **Required** (min 32 characters) for signing session cookies. `bin/run.sh` generates one per run if unset. If you start **`uvicorn` directly** without exporting this, the process exits on startup. |
 | `BASKET_API_BASIC_USER` | Username for `GET /api/players` and `GET /api/clubs`. |
 | `BASKET_API_BASIC_PASSWORD` | Password for those endpoints. If unset or empty, the API returns **503** until both are set. |
+| `BASKET_LOG_FILE` | If set to a non-empty path, JSON logs are also appended there (**RotatingFileHandler**). Relative paths are resolved from the project root. Set to empty to disable file logging. |
+| `BASKET_LOG_MAX_BYTES` | Max size per log file before rotation (default `5242880`, 5 MiB). |
+| `BASKET_LOG_BACKUP_COUNT` | Number of rotated log files to keep (default `5`). |
+| `BASKET_SMTP_HOST` | SMTP server for password-reset emails. If unset, the reset link is printed to **stderr** instead of being emailed (see `src/password_reset_mail.py`). |
+| `BASKET_SMTP_PORT` | SMTP port (default `587`). |
+| `BASKET_SMTP_USER` | SMTP auth user (optional for some servers). |
+| `BASKET_SMTP_PASSWORD` | SMTP password. |
+| `BASKET_SMTP_FROM` | From address (defaults to `BASKET_SMTP_USER` if unset). |
 
-See `.env.example` for placeholders. Example API call:
+Example API call:
 
 ```bash
 curl -s -u 'myuser:mysecret' http://127.0.0.1:8000/api/players
@@ -114,11 +149,12 @@ curl -s -u 'myuser:mysecret' http://127.0.0.1:8000/api/players
 
 ## How the app flow works
 
-1. **Startup:** Ensures `data/` exists, creates `basket.sqlite` from `schema.sql` if missing, and runs lightweight **migrations** (for example adding the `club` table or `users.is_admin` on older databases).
-2. **Browser requests:** Most paths require a **signed session** with an **active** user. Exceptions include `/login`, `/register`, `/bootstrap`, `/static/*`, and `/api/*`.
+1. **Startup:** Ensures `data/` exists, creates `basket.sqlite` from `schema.sql` if missing, and runs lightweight **migrations** (for example adding tables or columns present in `schema.sql` but missing in older files).
+2. **Browser requests:** Most paths require a **signed session** with an **active** user. Exceptions include `/login`, `/register`, `/bootstrap`, `/forgot-password`, `/reset-password`, `/static/*`, and `/api/*` (plus OpenAPI paths where enabled).
 3. **Empty user table:** Visiting sign-in redirects to **`/bootstrap`** once, to create the **first administrator**. Self-service **`/register`** always creates **non-admin** users.
-4. **Admins:** Users with `is_admin = 1` see **User administration** on the home page and can use **`/admin/users`**.
+4. **Admins:** Users with `is_admin = 1` see **User administration** on the home page, can use **`/admin/users`**, and can open **`/admin/audit-log`** for roster-related audit entries.
 5. **JSON API:** Separate from the session; uses **HTTP Basic** and the same SQLite data via `src/queries.py`.
+6. **Seasons:** Signed-in users use **`/seasons`** and related pages to manage seasons, club participation, and rosters (see `src/roster_routes.py`).
 
 Interactive API docs (when the server runs): [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs).
 
