@@ -1,0 +1,155 @@
+// Manual deploy pipeline for basketball_statistics.
+//
+// Jenkins: create a separate **Pipeline** job → *Pipeline script from SCM* → set
+// **Script Path** to `Jenkinsfile.deploy`. Leave automatic triggers empty; run when you want to deploy.
+//
+// Jenkins credentials: create **SSH Username with private key** (default id: `basketball-deploy-ssh`).
+// You can change the default for SSH_CREDENTIALS_ID in parameters to match your Jenkins credential id.
+//
+// EC2 host: install **Python 3** and **rsync**. Ensure **DEPLOY_PATH** exists and is writable by the SSH user.
+// Add a **systemd** unit that runs Uvicorn from `${DEPLOY_PATH}/.venv` (production: bind `0.0.0.0`, no
+// `--reload`; set `BASKET_SESSION_SECRET` via `EnvironmentFile` or similar). The SSH user needs
+// `sudo systemctl restart <unit>` (or enable SKIP_SYSTEMD_RESTART and restart manually).
+//
+// This pipeline rsyncs only tracked app paths (`src/`, `bin/`, `requirements.txt`, `schema.sql`, `pytest.ini`)
+// so a server-local `data/basket.sqlite` is not overwritten by rsync.
+
+pipeline {
+    agent any
+
+    options {
+        timestamps()
+    }
+
+    parameters {
+        string(
+            name: 'GIT_REF',
+            defaultValue: 'master',
+            trim: true,
+            description: 'Git branch or tag to deploy (must exist on origin after fetch).'
+        )
+        string(
+            name: 'DEPLOY_HOST',
+            defaultValue: '',
+            trim: true,
+            description: 'Server hostname or IP (required).'
+        )
+        string(
+            name: 'DEPLOY_USER',
+            defaultValue: 'ubuntu',
+            trim: true,
+            description: 'SSH user with write access to DEPLOY_PATH.'
+        )
+        string(
+            name: 'DEPLOY_PATH',
+            defaultValue: '/opt/basketball_statistics',
+            trim: true,
+            description: 'Absolute directory on the server for the application tree.'
+        )
+        string(
+            name: 'SYSTEMD_UNIT',
+            defaultValue: 'basketball-statistics',
+            trim: true,
+            description: 'systemd unit to restart after deploy (with or without .service).'
+        )
+        string(
+            name: 'SSH_CREDENTIALS_ID',
+            defaultValue: 'basketball-deploy-ssh',
+            trim: true,
+            description: 'Jenkins credential id: SSH Username with private key.'
+        )
+        booleanParam(
+            name: 'SKIP_SYSTEMD_RESTART',
+            defaultValue: false,
+            description: 'If true, sync and install dependencies only; do not restart systemd.'
+        )
+    }
+
+    stages {
+        stage('Validate parameters') {
+            steps {
+                script {
+                    if (!params.DEPLOY_HOST?.trim()) {
+                        error('DEPLOY_HOST is required.')
+                    }
+                    def u = params.SYSTEMD_UNIT.trim()
+                    if (!u.endsWith('.service')) {
+                        u += '.service'
+                    }
+                    env.DEPLOY_SYSTEMD_UNIT = u
+                }
+            }
+        }
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+                withEnv(["GIT_REF=${params.GIT_REF}"]) {
+                    sh '''
+                        set -euo pipefail
+                        git fetch origin
+                        git checkout "${GIT_REF}" || git checkout -B deploy "origin/${GIT_REF}"
+                    '''
+                }
+            }
+        }
+
+        stage('Rsync application files') {
+            steps {
+                sshagent(credentials: [params.SSH_CREDENTIALS_ID]) {
+                    withEnv([
+                        "DEPLOY_HOST=${params.DEPLOY_HOST}",
+                        "DEPLOY_USER=${params.DEPLOY_USER}",
+                        "DEPLOY_PATH=${params.DEPLOY_PATH}",
+                    ]) {
+                        sh '''
+                            set -euo pipefail
+                            export RSYNC_RSH="ssh -o StrictHostKeyChecking=accept-new"
+                            DEST="${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+                            ssh -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}" "mkdir -p '${DEPLOY_PATH}'"
+                            rsync -avz \
+                                requirements.txt schema.sql pytest.ini \
+                                src/ bin/ \
+                                "${DEST}"
+                        '''
+                    }
+                }
+            }
+        }
+
+        stage('Remote venv, pip install, restart') {
+            steps {
+                sshagent(credentials: [params.SSH_CREDENTIALS_ID]) {
+                    withEnv([
+                        "DEPLOY_HOST=${params.DEPLOY_HOST}",
+                        "DEPLOY_USER=${params.DEPLOY_USER}",
+                        "DEPLOY_PATH=${params.DEPLOY_PATH}",
+                        "DEPLOY_SYSTEMD_UNIT=${env.DEPLOY_SYSTEMD_UNIT}",
+                        "SKIP_RESTART=${params.SKIP_SYSTEMD_RESTART ? '1' : '0'}",
+                    ]) {
+                        sh '''
+                            set -euo pipefail
+                            SSH=(ssh -o StrictHostKeyChecking=accept-new "${DEPLOY_USER}@${DEPLOY_HOST}")
+                            "${SSH[@]}" \
+                                env \
+                                "DEPLOY_PATH=${DEPLOY_PATH}" \
+                                "SKIP_RESTART=${SKIP_RESTART}" \
+                                "DEPLOY_SYSTEMD_UNIT=${DEPLOY_SYSTEMD_UNIT}" \
+                                bash -c '
+                                    set -euo pipefail
+                                    cd "${DEPLOY_PATH}"
+                                    python3 -m venv .venv
+                                    . .venv/bin/activate
+                                    python -m pip install -q --upgrade pip
+                                    pip install -q -r requirements.txt
+                                    if [ "${SKIP_RESTART}" != "1" ]; then
+                                        sudo systemctl restart "${DEPLOY_SYSTEMD_UNIT}"
+                                    fi
+                                '
+                        '''
+                    }
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,56 @@
+# Grafana + Loki + Promtail — tail JSON lines from the repo's data/logs (run from this directory).
+# See README.md for usage.
+
+services:
+  loki:
+    image: grafana/loki:2.9.8
+    command: -config.file=/etc/loki/local-config.yaml
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    networks:
+      - monitoring
+
+  promtail:
+    build:
+      context: .
+      dockerfile: docker/promtail.Dockerfile
+    image: monitoring-promtail:2.9.8
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      # Default: repo data/logs relative to this compose file. If the mount is empty
+      # in the VM (Colima), set BASKET_DATA_LOGS_HOST_PATH in .env to an absolute path.
+      - ${BASKET_DATA_LOGS_HOST_PATH:-../data/logs}:/var/log/basketball:ro
+      - promtail-positions:/tmp
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_DEFAULT_THEME: dark
+      GF_INSTALL_PLUGINS: ""
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - loki
+    networks:
+      - monitoring
+
+volumes:
+  loki-data:
+  grafana-data:
+  promtail-positions:
+
+networks:
+  monitoring:
+    driver: bridge
